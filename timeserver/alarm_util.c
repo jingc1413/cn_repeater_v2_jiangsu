@@ -1,0 +1,442 @@
+/***
+ * 名称: 网管系统定时任务服务程序
+ *
+ * 修改记录:
+ * 付志刚 2008-11-8 创建
+ */
+
+#include <ebdgdl.h>
+#include "omcpublic.h"
+#include "timeserver.h"
+
+
+RESULT GetMySqlSequence(PUINT pnSerial,PCSTR pszTableName)
+{
+	STR szSql[MAX_SQL_LEN];
+	CURSORSTRU struCursor;
+	
+	sprintf(szSql,"SELECT auto_increment as itemvalue FROM information_schema.`TABLES` WHERE TABLE_NAME='%s'", pszTableName);
+	if(SelectTableRecord(szSql,&struCursor)!=NORMAL)
+	{
+		*pnSerial=0;
+		PrintErrorLog(DBG_HERE,"取自增序列号时出错 SQL语句[%s]错误信息=[%s]\n",szSql,GetSQLErrorMessage());
+		
+		return EXCEPTION;
+	}
+	if(FetchCursor(&struCursor)!=NORMAL)
+	{
+		*pnSerial=0;
+		FreeCursor(&struCursor);
+		return NORMAL;
+	}
+	*pnSerial=atoi(GetTableFieldValue(&struCursor,"itemvalue"));
+	FreeCursor(&struCursor);
+	
+	return NORMAL;
+}
+
+RESULT GetDbSequence(PUINT pnSerial,PCSTR pszItemName)
+{
+	STR szSql[MAX_SQL_LEN];
+	CURSORSTRU struCursor;
+	
+	sprintf(szSql,"select %s.NEXTVAL as itemvalue from dual", pszItemName);
+	if(SelectTableRecord(szSql,&struCursor)!=NORMAL)
+	{
+		*pnSerial=0;
+		PrintErrorLog(DBG_HERE,"取自增序列号时出错 SQL语句[%s]错误信息=[%s]\n",szSql,GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	if(FetchCursor(&struCursor)!=NORMAL)
+	{
+		*pnSerial=0;
+		FreeCursor(&struCursor);
+		return NORMAL;
+	}
+	*pnSerial=atoi(GetTableFieldValue(&struCursor,"itemvalue"));
+	FreeCursor(&struCursor);
+	
+	return NORMAL;
+}
+
+
+/*
+ * 取自增序号
+ */
+RESULT GetDbSerial(PINT pnSerial,PCSTR pszItemName)
+{
+	STR szSql[MAX_SQL_LEN];
+	CURSORSTRU struCursor;
+
+	
+	sprintf(szSql,"select ide_ItemValue from sys_Identity where ide_Item='%s' for update wait 10",pszItemName);
+	if(SelectTableRecord(szSql,&struCursor)!=NORMAL)
+	{
+		*pnSerial=0;
+		PrintErrorLog(DBG_HERE,"取自增序列号时出错 SQL语句[%s]错误信息=[%s]\n",szSql,GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	if(FetchCursor(&struCursor)!=NORMAL)
+	{
+		FreeCursor(&struCursor);
+		sprintf(szSql,"insert into sys_Identity (ide_Item, ide_ItemValue) values('%s',1)",pszItemName);
+		PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+		if(ExecuteSQL(szSql)!=NORMAL)
+		{
+			PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败,错误信息[%s]\n",szSql,GetSQLErrorMessage());
+			return EXCEPTION;
+		}
+		*pnSerial=1;
+		CommitTransaction();
+		return NORMAL;
+    }
+	*pnSerial=atoi(GetTableFieldValue(&struCursor,"ide_ItemValue"))+1;
+	FreeCursor(&struCursor);
+	
+	sprintf(szSql,"UPDATE sys_Identity SET ide_ItemValue=ide_ItemValue + 1 WHERE ide_Item='%s'",pszItemName);
+	//PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+	if(ExecuteSQL(szSql)!=NORMAL)
+	{
+		PrintErrorLog(DBG_HERE,"取自增序列号时出错 SQL语句[%s]错误信息=[%s]\n",szSql,GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	CommitTransaction();
+	
+    //整数最大数为2147483645
+    if (*pnSerial >= 2147483645)
+    {
+        sprintf(szSql,"UPDATE sys_Identity SET ide_ItemValue= 1 WHERE ide_Item='%s'",pszItemName);
+	    PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+	    if(ExecuteSQL(szSql)!=NORMAL)
+	    {
+		    PrintErrorLog(DBG_HERE,"取自增序列号时出错 SQL语句[%s]错误信息=[%s]\n",szSql,GetSQLErrorMessage());
+		    return EXCEPTION;
+	    }
+	    CommitTransaction();
+    }
+    
+	return NORMAL;
+}
+
+
+BOOL ExistAlarmLog(int nAlarmId, int nNeId)
+{
+	CURSORSTRU struCursor;
+	STR szSql[MAX_SQL_LEN];
+	INT nCount;
+	
+	memset(szSql, 0, sizeof(szSql));
+	sprintf(szSql, "select count(alg_NeId) as v_count from alm_AlarmLog where alg_NeId = %d and alg_AlarmId= %d and alg_AlarmTime>to_date( '%s 000000','yyyymmdd hh24miss') and alg_AlarmTime<to_date( '%s 235959','yyyymmdd hh24miss')", 
+		nNeId, nAlarmId, GetSystemDate(), GetSystemDate());
+	//PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
+	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
+	{
+		PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n", \
+					  szSql, GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	if(FetchCursor(&struCursor) != NORMAL)
+	{
+	    FreeCursor(&struCursor);
+	    PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n", \
+	    				  szSql, GetSQLErrorMessage());
+	    return EXCEPTION;
+
+	}
+	nCount = atoi(GetTableFieldValue(&struCursor, "v_count"));
+	FreeCursor(&struCursor);
+	if (nCount > 0)
+	    return BOOLTRUE;
+	else
+	    return BOOLFALSE;
+}
+
+/*
+ * 从系统配置表中获取系统信息
+ */
+RESULT GetSysParameter(PCSTR pszArgSql,PSTR pszArgValue)
+{
+	STR szSql[MAX_SQL_LEN];
+	CURSORSTRU struCursor;
+
+	sprintf(szSql,"select PAR_KEYVALUE from SYS_PARAMETER where %s", pszArgSql);
+	//PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
+	{
+		PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	if(FetchCursor(&struCursor) != NORMAL)
+	{
+		if(GetSQLErrorNo()==NO_FOUND_RECORD)
+		{
+			PrintErrorLog(DBG_HERE,"系统参数[%s]不存在.请配置\n",pszArgSql);
+		}
+		else
+		{
+			PrintErrorLog(DBG_HERE,"执行SQL语句[%s] 失败[%s]\n",szSql,GetSQLErrorMessage());
+		}
+		FreeCursor(&struCursor);
+		strcpy(pszArgValue, "");
+		return EXCEPTION;
+	}
+	strcpy(pszArgValue,TrimAllSpace(GetTableFieldValue(&struCursor,"PAR_KEYVALUE")));
+	FreeCursor(&struCursor);
+
+	return NORMAL;
+}
+
+/*
+ * 处理告警预警
+ */
+RESULT ProcessAlarmYJ()
+{
+    STR szSql[MAX_SQL_LEN];
+	CURSORSTRU struCursor;
+	STR szCondition[100];
+	int nNeId, nTemp, nAlarmLogId;
+	STR szMosEnable[10], szFtpDownEnable[10], szMmsEnable[10], szFtpCellEnable[10];
+	float nMosValue, nFtpDownValue;
+	int  nMosDay, nFtpDownDay, nMmsDay, nMmsValue;
+	int nFtpCellValue, nFtpCellDay;
+	int nFtpDownRate, nMmsRate;
+	PSTR pszSepStr[10];
+	
+	sprintf(szSql, "par_SectionName ='alarmYJ' and par_KeyName = 'alarmYJ4'");
+	if (GetSysParameter(szSql, szCondition) != NORMAL)
+		return EXCEPTION;
+	nTemp = SeperateString(szCondition, '|', pszSepStr, 4);
+	strcpy(szMosEnable, pszSepStr[0]);
+	nMosDay = atof(pszSepStr[1]);
+	nMosValue = atoi(pszSepStr[2]);
+	
+	sprintf(szSql, "par_SectionName ='alarmYJ' and par_KeyName = 'alarmYJ5'");
+	if (GetSysParameter(szSql, szCondition) != NORMAL)
+		return EXCEPTION;
+	nTemp = SeperateString(szCondition, '|', pszSepStr, 4);
+	strcpy(szFtpDownEnable, pszSepStr[0]);
+	nFtpDownDay = atoi(pszSepStr[1]);
+	nFtpDownValue = atof(pszSepStr[2]);
+	
+	
+	sprintf(szSql, "par_SectionName ='alarmYJ' and par_KeyName = 'alarmYJ6'");
+	if (GetSysParameter(szSql, szCondition) != NORMAL)
+		return EXCEPTION;
+	nTemp = SeperateString(szCondition, '|', pszSepStr, 4);
+	strcpy(szMmsEnable, pszSepStr[0]);
+	nMmsDay = atoi(pszSepStr[1]);
+	nMmsValue = atoi(pszSepStr[2]);
+	
+	
+	sprintf(szSql, "par_SectionName ='alarmYJ' and par_KeyName = 'alarmYJ7'");
+	if (GetSysParameter(szSql, szCondition) != NORMAL)
+		return EXCEPTION;
+	nTemp = SeperateString(szCondition, '|', pszSepStr, 4);
+	strcpy(szFtpCellEnable, pszSepStr[0]);
+	nFtpCellDay = atoi(pszSepStr[1]);
+	nFtpCellValue = atoi(pszSepStr[2]);
+	
+	//while(TRUE)
+	{
+	    
+	    //FTP下载速率低
+	    if (strcmp(szFtpDownEnable, "TRUE") == 0)
+		{
+			sprintf(szSql,"select ne_neid, (FTP2_DATA_LEN*8/FTP2_SPEED_TIMES)*100 as nftpdown from data_collect_report where COLLECT_DATE = to_date(to_char(sysdate-%d,'yyyy-mm-dd'), 'yyyy-mm-dd') and FTP2_DATA_LEN > 0 and (FTP2_DATA_LEN*8/FTP2_SPEED_TIMES)*100 < %.2f ",
+				 nFtpDownDay, nFtpDownValue);
+	    	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+	    	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
+	    	{
+	    		PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+	    		sleep(60);
+	    		return EXCEPTION;
+	    	}
+	    	while (FetchCursor(&struCursor) == NORMAL)
+	    	{
+	    		nNeId = atoi(GetTableFieldValue(&struCursor, "ne_neid"));
+	    		nFtpDownRate = atoi(GetTableFieldValue(&struCursor, "nftpdown"));
+	    		if (ExistAlarmLog(ALM_FTPDOWN_ID, nNeId) == BOOLFALSE)
+	    		{
+	    			if(GetDbSerial(&nAlarmLogId, "AlarmLog")!=NORMAL)
+					{
+						PrintErrorLog(DBG_HERE,"获取告警日志流水号错误\n");
+						return EXCEPTION;
+					}
+					snprintf(szSql, sizeof(szSql), "insert into  alm_AlarmLog (alg_AlarmLogId,alg_AlarmId,alg_NeId,alg_AlarmTime,alg_AlarmStatusId,alg_AlarmObjId, alg_AlarmInfo)"
+        			     " VALUES(%d, %d, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), 1, '%s', '平均下载速率为 %d %%')", 
+        			     nAlarmLogId, ALM_FTPDOWN_ID, nNeId, GetSysDateTime(), "F906", nFtpDownRate);
+    				PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
+    				if(ExecuteSQL(szSql) !=NORMAL) 
+					{
+						PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+						return EXCEPTION;
+					}
+					CommitTransaction();
+	    		}
+	    	}
+	    	FreeCursor(&struCursor);
+		}
+	    //sleep(60);
+	    
+	    //MMS端到端成功率低
+	    if (strcmp(szMmsEnable, "TRUE") == 0)
+		{
+			sprintf(szSql,"select ne_neid, (mms_receive_times * 100 /mms_dtd_times) as nmmsrate from DATA_COLLECT_REPORT where COLLECT_DATE = to_date(to_char(sysdate-%d,'yyyy-mm-dd'), 'yyyy-mm-dd') and mms_dtd_times > 0 and mms_receive_times > 0 and  (mms_receive_times * 100 /mms_dtd_times) < %d",
+				 nMmsDay, nMmsValue);
+	    	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+	    	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
+	    	{
+	    		PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+	    		sleep(60);
+	    		return EXCEPTION;
+	    	}
+	    	while (FetchCursor(&struCursor) == NORMAL)
+	    	{
+	    		nNeId = atoi(GetTableFieldValue(&struCursor, "ne_neid"));
+	    		nMmsRate = atoi(GetTableFieldValue(&struCursor, "nmmsrate"));
+	    		if (ExistAlarmLog(ALM_MMS_ID, nNeId) == BOOLFALSE)
+	    		{
+	    			if(GetDbSerial(&nAlarmLogId, "AlarmLog")!=NORMAL)
+					{
+						PrintErrorLog(DBG_HERE,"获取告警日志流水号错误\n");
+						return EXCEPTION;
+					}
+					snprintf(szSql, sizeof(szSql), "insert into  alm_AlarmLog (alg_AlarmLogId,alg_AlarmId,alg_NeId,alg_AlarmTime,alg_AlarmStatusId,alg_AlarmObjId, alg_AlarmInfo)"
+        			     " VALUES(%d, %d, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), 1, '%s', '端到端成功率为 %d %%')", 
+        			     nAlarmLogId, ALM_MMS_ID, nNeId, GetSysDateTime(), "F907", nMmsRate);
+    				PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
+    				if(ExecuteSQL(szSql) !=NORMAL) 
+					{
+						PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+						return EXCEPTION;
+					}
+					CommitTransaction();
+	    		}
+	    	}
+	    	FreeCursor(&struCursor);
+		}
+	    //sleep(60);
+	    
+	    //FTP时小区重选
+	    //sleep(60);
+	}
+	return NORMAL;
+}
+
+
+
+RESULT ProcessCqtLowAlarm()
+{
+	STR szSql[MAX_SQL_LEN];
+	CURSORSTRU struCursor;
+	int nNeId;
+	INT nAlarmLogId;
+	
+	/*
+	 * 处理CQT接通值低告警
+	 */
+	sprintf(szSql, "select NE_NEID from data_collect_report "
+				   " where CQT_SCHEDULE_TIMES > 0 and CQT_NORMAL_TIMES / CQT_SCHEDULE_TIMES < 0.8"
+				   " and to_char(COLLECT_DATE, 'yyyy-mm-dd') = to_char(sysdate-1, 'yyyy-mm-dd') "
+			);
+	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
+	{
+		CloseDatabase();
+		PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+		sleep(60);
+		return EXCEPTION;
+	}
+	while (FetchCursor(&struCursor) == NORMAL)
+	{
+		nNeId = atoi(GetTableFieldValue(&struCursor, "NE_NEID"));
+		/*
+		 *  保存告警日志
+		 */
+		if (ExistAlarmLog(166, nNeId) == BOOLFALSE)
+		{
+			
+			if(GetDbSerial(&nAlarmLogId, "AlarmLog")!=NORMAL)
+			{
+				PrintErrorLog(DBG_HERE,"获取告警日志流水号错误\n");
+				FreeCursor(&struCursor);
+				return EXCEPTION;
+			}
+			snprintf(szSql, sizeof(szSql), "insert into  alm_AlarmLog (alg_AlarmLogId,alg_AlarmId,alg_NeId,alg_AlarmTime,alg_AlarmStatusId,alg_AlarmObjId)"
+        	 " VALUES(%d, 166, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), 1, 'F905')", 
+        	  nAlarmLogId, nNeId, GetSysDateTime());
+    		PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
+    		if(ExecuteSQL(szSql) !=NORMAL) 
+			{
+				PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+				return EXCEPTION;
+			}
+			CommitTransaction();
+		}
+	
+	}
+	return NORMAL;
+}
+
+//2020  mysql数据库由于qs_id重复冲突修改查询每个字段
+RESULT ProcessMsgQueue()
+{
+	char szSql[MAX_BUFFER_LEN];
+	CURSORSTRU struCursor;
+	int nCount=0;
+	
+	while(TRUE)
+	{
+		memset(szSql, 0, sizeof(szSql));
+		sprintf(szSql, "select count(*) as v_count from tt_msgqueue where qs_lasttime < '%s'", MakeSTimeFromITime((INT)time(NULL)));
+		//PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
+		if(SelectTableRecord(szSql, &struCursor) != NORMAL)
+		{
+			PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n", \
+						  szSql, GetSQLErrorMessage());
+			CloseDatabase();
+			sleep(60);
+			return EXCEPTION;
+		}
+		if(FetchCursor(&struCursor) == NORMAL)
+		{
+			nCount = atoi(GetTableFieldValue(&struCursor, "v_count"));
+		}
+		FreeCursor(&struCursor);
+		if (nCount == 0)
+		{
+			sleep(60);
+			continue;
+		}
+		
+		
+		memset(szSql, 0, sizeof(szSql));
+    	snprintf(szSql, sizeof(szSql), 
+    			"INSERT INTO ne_msgqueue (qs_neid, qs_repeaterid, qs_deviceid, qs_content, qs_protocoltypeid, qs_telephonenum, qs_qrynumber, qs_commandcode, qs_servertelnum, qs_type, qs_eventtime, qs_level, qs_commtypeid, qs_netflag, qs_taskid, qs_tasklogid, qs_lasttime, qs_msgstat) " 
+				"SELECT qs_neid, qs_repeaterid, qs_deviceid, qs_content, qs_protocoltypeid, qs_telephonenum, qs_qrynumber, qs_commandcode, qs_servertelnum, qs_type, qs_eventtime, qs_level, qs_commtypeid, qs_netflag, qs_taskid, qs_tasklogid, qs_lasttime, qs_msgstat FROM tt_msgqueue where qs_lasttime < '%s'", 
+				MakeSTimeFromITime((INT)time(NULL)));
+    	PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
+		if(ExecuteSQL(szSql) != NORMAL)
+		{
+			PrintErrorLog(DBG_HERE, "执行SQL语句失败[%s][%s]\n",
+				szSql, GetSQLErrorMessage());
+    	    return EXCEPTION;
+		}
+    	CommitTransaction();
+    	
+    	memset(szSql, 0, sizeof(szSql));
+    	snprintf(szSql, sizeof(szSql), "delete from tt_msgqueue where qs_lasttime < '%s'", MakeSTimeFromITime((INT)time(NULL)));
+    	PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
+		if(ExecuteSQL(szSql) != NORMAL)
+		{
+			PrintErrorLog(DBG_HERE, "执行SQL语句失败[%s][%s]\n",
+				szSql, GetSQLErrorMessage());
+    	    return EXCEPTION;
+		}
+    	CommitTransaction();
+    	
+    	sleep(10);
+    
+	}
+    return NORMAL;
+}

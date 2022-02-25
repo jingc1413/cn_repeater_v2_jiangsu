@@ -1,0 +1,59 @@
+K 25
+svn:wc:ra_dav:version-url
+V 42
+/svn/das/!svn/ver/486/linux/src/timeserver
+END
+timetask.c
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/das/!svn/ver/486/linux/src/timeserver/timetask.c
+END
+timeserver.c
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/das/!svn/ver/849/linux/src/timeserver/timeserver.c
+END
+alarm_util.c
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/das/!svn/ver/486/linux/src/timeserver/alarm_util.c
+END
+dayalarm.c
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/das/!svn/ver/486/linux/src/timeserver/dayalarm.c
+END
+houralarm.c
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/das/!svn/ver/486/linux/src/timeserver/houralarm.c
+END
+mosalarm
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/svn/das/!svn/ver/486/linux/src/timeserver/mosalarm
+END
+timeserver.h
+K 25
+svn:wc:ra_dav:version-url
+V 55
+/svn/das/!svn/ver/486/linux/src/timeserver/timeserver.h
+END
+mosalarm.c
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/das/!svn/ver/486/linux/src/timeserver/mosalarm.c
+END
+makefile
+K 25
+svn:wc:ra_dav:version-url
+V 51
+/svn/das/!svn/ver/849/linux/src/timeserver/makefile
+END

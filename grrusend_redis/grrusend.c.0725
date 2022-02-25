@@ -1,0 +1,1520 @@
+/***
+ * Ãû³Æ: Íø¹ÜÏµÍ³GRRU·¢ËÍÏûÏ¢³ÌÐò
+ *
+ * ÐÞ¸Ä¼ÇÂ¼:
+ * ¸¶Ö¾¸Õ 2008-11-8 ´´½¨
+ */
+
+#include <ebdgdl.h>
+#include "omcpublic.h"
+#include "grrusend.h"
+#include <mobile2g.h>
+#include <pthread.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include "log_r.h"
+#include "utils.h"
+#include "doubly_linked_list.h"
+
+#define VERSION "2.1.20"
+
+#define SOCK_TIMEOUT 20 /* ÉèÖÃ³ÌÐò socket ³¬Ê±Ê±¼äÎª20Ãë */
+#define DEBUG_VERY_VERBOSE 1
+
+/* task node */
+typedef struct tagTASKPARASTRU {
+	BYTEARRAY struPack;
+
+	STR szDeviceIp[20]; /* ne's ip address */
+	INT nPort; /* ne's listen port */
+	INT nDcsId; /* ne_gprsqueue.qs_id */
+    int nTaskLogId; /* for debugging */
+    int nResendTimes; /* nResendTime is 1 if nTaskLogId is 0, otherwise 2*/
+    struct list_head list;
+} TASKPARASTRU;
+
+/* Ö÷Ïß³ÌÎ¬»¤µÄ qs_id ÁÐ±í£¬ÓÃÓÚ¼ÇÂ¼×ÓÏß³ÌÊÇ·ñ³É¹¦Íê³ÉÈÎÎñ */
+typedef struct tagTASKSTATESTRU {
+	INT nDcsId; /* ne_gprsqueue.qs_id */
+    /* 0 - to be sent to ne;
+     * 1 - recv from ne;
+     * 2 - update into ne_gprsqueue;
+     * -1 - failed to recv from ne */
+	INT nState;
+
+    struct list_head list;
+} TASKSTATESTRU;
+
+struct task_state_list {
+    int nCount; /* current count of items in the list */
+    int nMaxCount; /* capacity of the list */
+
+    pthread_mutex_t lock;
+    struct list_head tasks;
+};
+
+struct task_state_list *gTaskStateList;
+
+static STR szServiceName[MAX_STR_LEN];
+static STR szDbName[MAX_STR_LEN];
+static STR szUser[MAX_STR_LEN];
+static STR szPwd[MAX_STR_LEN];
+static int nGprsServPort=-1;
+static STR szGprsServIp[MAX_STR_LEN];
+static int nMasterPort=-1;
+static STR szMasterIp[MAX_STR_LEN];
+static STR szHostState[100];
+/* ÅäÖÃÖÐÖ¸¶¨µÄÄ³¸ö IP µØÖ·£¬grrusend ¾ÍÊ¹ÓÃÕâ¸öµØÖ··¢ËÍÊý¾Ý°ü */
+static STR szLocalIpAddr[32] = {0};
+static INT gMaxThrNum = 50;
+
+struct list_head g_packets_ne; /* packets to be sent to ne */
+struct list_head g_packets_gprsserv; /* packets to be sent to gprsserv */
+pthread_mutex_t g_packets_lock; /* lock for g_packets_ne and g_packets_gprsserv */
+int nCfgResendTimes = 5;
+
+/******************************************
+ *GetCfgItem() µÄ¿ÉÖØÈë°æ±¾£¬¾ÍÊÇ°Ñ PrintErrorLog() ÓÃ¿ÉÖØÈëµÄ PrintErrorLogR() ´úÌæ
+ *È¡initÎÄ¼þÖÐÉèÖÃÏîµÄÖµ 
+ *cfg_seg   ¶ÎÃû
+ *cfg_item  ÉèÖÃÏîÃû³Æ
+ *value     ÉèÖÃÏîµÄÖµ
+ *·µ»ØÂë    0: ³É¹¦
+ *         -1: ÅäÖÃÎÄ¼þ²»´æÔÚ
+ *         -2: Î´ÕÒµ½ÅäÖÃ½Ú
+ *         -3: Î´ÕÒµ½ÅäÖÃÏî
+ *******************************************/
+
+/******************************************
+ ³ýÈ¥×¢ÊÍÄÚÈÝ
+ ´Ó libpublic/utils.c ÎÄ¼þÖÐ¸´ÖÆ¹ýÀ´
+******************************************/
+
+void FreeTaskPara(TASKPARASTRU *pstruTaskPara)
+{
+    if (pstruTaskPara == NULL)
+        return;
+
+    free(pstruTaskPara->struPack.pPack);
+    free(pstruTaskPara);
+}
+
+TASKPARASTRU *CreateTaskPara()
+{
+    TASKPARASTRU *pstruTaskPara;
+
+    pstruTaskPara = (TASKPARASTRU *)calloc(1, sizeof (TASKPARASTRU));
+    if (pstruTaskPara == NULL) {
+        PrintDebugLogR(DBG_HERE, "Failed to allocate memory for task\n");
+        return NULL;
+    }
+
+    /* pPack point a buffer that is used to send/recv msg to/from peer,
+     * so it needs enough space to restore data */
+    pstruTaskPara->struPack.pPack = (BYTE*)calloc(1, MAX_BUFFER_LEN);
+    if (pstruTaskPara->struPack.pPack == NULL) {
+        PrintDebugLogR(DBG_HERE, "Failed to allocate memory for task's buffer\n");
+        FreeTaskPara(pstruTaskPara);
+        return NULL;
+    }
+
+    return pstruTaskPara;
+}
+
+void FreeTaskState(TASKSTATESTRU *pstruTaskState)
+{
+    if (pstruTaskState == NULL)
+        return;
+
+    free(pstruTaskState);
+}
+
+TASKSTATESTRU *CreateTaskState(void)
+{
+    TASKSTATESTRU *pstruTaskState;
+
+    pstruTaskState = (TASKSTATESTRU *)calloc(1, sizeof (TASKSTATESTRU));
+    if (pstruTaskState == NULL) {
+        PrintDebugLogR(DBG_HERE, "Failed to allocate memory for task state\n");
+        return NULL;
+    }
+
+    return pstruTaskState;
+}
+
+/**
+ * return: 0 - succeed; -1 - failed.
+ */
+int AddTaskState(int nDcsId)
+{
+    TASKSTATESTRU *pstruTaskStateNew, *pstruTaskState, *pstruTaskStateSafe;
+    int nNeedDel = 0;
+    int nActualDel = 0;
+    int ret = -1;
+
+    if (nDcsId < 0)
+        return ret;
+
+    pstruTaskStateNew = CreateTaskState();
+    if (pstruTaskStateNew == NULL)
+        return ret;
+
+    pstruTaskStateNew->nDcsId = nDcsId;
+
+    pthread_mutex_lock(&gTaskStateList->lock);
+    /* check if need to delete a outdated item */
+    if (gTaskStateList->nCount >= gTaskStateList->nMaxCount) {
+        nNeedDel = 1;
+        list_for_each_entry_safe(pstruTaskState, pstruTaskStateSafe,
+                &gTaskStateList->tasks, list) {
+            if (pstruTaskState->nState == 2) {
+                /* this task is already updated into gprsqueue,
+                 * so delete it */
+                list_del(&pstruTaskState->list);
+                gTaskStateList->nCount--;
+                FreeTaskState(pstruTaskState);
+                nActualDel = 1;
+                break;
+            }
+        }
+    }
+
+    if (nNeedDel == 0 || (nNeedDel == 1 && nActualDel == 1)) {
+        list_add_tail(&pstruTaskStateNew->list, &gTaskStateList->tasks);
+        gTaskStateList->nCount++;
+        ret = 0;
+    } else {
+        FreeTaskState(pstruTaskStateNew);
+        ret = -1;
+    }
+    pthread_mutex_unlock(&gTaskStateList->lock);
+
+    return ret;
+}
+
+static char * FilterRemark(char *src, char *dest)
+{
+    char *ptr;
+    ptr=strtok(src, "#");
+    strcpy(dest, ptr);
+    return dest;
+}
+
+/*************************
+ ¹ýÂË»Ø³µ·û
+ ´Ó libpublic/utils.c ÎÄ¼þÖÐ¸´ÖÆ¹ýÀ´
+**************************/
+static char *FilterCR(char *str)
+{
+    char *ptr;
+    
+    ptr = strchr(str, '\n');
+    if (ptr != NULL)
+        *ptr = '\0';
+    return str;
+}
+
+static RESULT GetCfgItemR(char *cfg_filename, char *cfg_seg, char *cfg_item, char *value)
+{
+    FILE *fp;
+    char item[256], buffer[256], buf[51], *ptr;
+    int flag;
+
+    sprintf(buf, "%s/etc/%s", getenv("HOME"), cfg_filename);
+    if ((fp = fopen(buf, "r")) == NULL)
+    {
+        PrintDebugLogR(DBG_HERE, "´ò¿ªÎÄ¼þ [%s] ·¢Éú´íÎó Çë¼ì²é¸ÃÎÄ¼þÊÇ·ñÓÐ¶ÁÈ¡È¨ÏÞ.\n",buf);
+	    return EXCEPTION;
+	}
+
+    flag = 0;
+    sprintf(buf, "[%s]", cfg_seg);
+    while (fgets(buffer, 256, fp) != NULL)
+    {
+        FilterRemark(buffer, item);
+        if (strstr(item, buf) != NULL)
+        {
+            flag = 1;
+            break;
+        }
+    }
+    if (flag != 1)
+    {
+        PrintDebugLogR(DBG_HERE, "Î´ÕÒµ½ÅäÖÃ¶ÎÃû [%s] .\n", cfg_seg );
+        fclose(fp);
+        return EXCEPTION;
+    }
+
+    sprintf(buf, "%s=", cfg_item);
+    flag = 0;
+    while(fgets(buffer, 256, fp) != 0)
+    {
+        FilterRemark(buffer, item);
+        FilterCR(item);
+        if (strstr(item, buf) != NULL)
+        {
+            ptr = strchr(item, '=');
+            TrimAllSpace(ptr+1);
+            strcpy(value, ptr+1);
+            flag = 1;
+            break;
+        }
+        else
+        if (strchr(item, '[') != NULL && strchr(item, ']') != NULL)
+        {
+            flag = 2;
+            break;
+        }
+    } 
+    fclose(fp);
+    if (flag != 1)
+        return EXCEPTION;
+    else
+    {
+    	/* È¡²ÎÊý³É¹¦ */
+       	return NORMAL;
+    }
+}
+
+/**
+ * SendUdp() µÄ¿ÉÖØÈë°æ±¾
+ * ·¢ËÍUDP±¨ÎÄ
+ *	
+ *	nConnectFd 	Á¬½ÓµÄÎÄ¼þÃèÊö·û
+ *	pszSendBuffer	·¢ËÍ»º³åÇø
+ *	nSendBufferLenth	Òª·¢ËÍµÄ±¨ÎÄ³¤¶È
+ *
+ * Returns ³É¹¦·µ»ØNORMAL Ê§°Ü·µ»ØEXCEPTION
+ */
+INT SendUdpR(INT nConnectFd,PSTR pszSendBuffer,UINT nSendBufferLenth, struct sockaddr *pClientAddr, INT nCliLen, UINT nTimeout)
+{
+	INT nWritenLenth;
+	PSTR pszSendBufferTemp;
+	struct timeval struTimeval;
+
+	struTimeval.tv_sec = nTimeout>0?nTimeout:60; /* ÉèÖÃ socket ³¬Ê±Ê±¼ä */
+	struTimeval.tv_usec = 0;
+
+	if(setsockopt(nConnectFd, SOL_SOCKET, SO_SNDTIMEO, &struTimeval, sizeof(struTimeval)) < 0){
+		PrintDebugLogR(DBG_HERE,"ÉèÖÃ·¢ËÍ³¬Ê±Ê±¼ä³ö´í[%s]\n",strerror(errno));
+		return EXCEPTION;
+	}
+	pszSendBufferTemp=pszSendBuffer;
+
+    nWritenLenth=sendto(nConnectFd,pszSendBufferTemp,nSendBufferLenth, 0, pClientAddr, nCliLen);
+    if(nWritenLenth < 0)
+    {
+        PrintDebugLogR(DBG_HERE,"·¢ËÍÊý¾Ýµ½ UDPSERV ³ö´í[%s]\n", strerror(errno));
+        return EXCEPTION;
+    }
+
+	return NORMAL;
+}
+
+/**
+ * RecvUdp() µÄ¿ÉÖØÈë°æ±¾
+ * ½ÓÊÕ¿Í»§¶ËµÄUDP±¨ÎÄ
+ *	
+ * nServerUDPFd	Ê¹ÓÃCreateListenUdp´´½¨µÄÌ×½Ó×Ö
+ * pszRecvBuffer	½ÓÊÕ»º³åÇø
+ * nRecvBufferLen	Òª½ÓÊÕµÄ×î´ó³¤¶È
+ * Returns 	³É¹¦·µ»Ø½ÓÊÕµ½µÄ×Ö½ÚÊýÄ¿ Ê§°Ü·µ»Ø-1
+ */
+static INT RecvUdpR(INT nServerSock,PSTR pszRecvBuffer,INT nRecvBufferLen, struct sockaddr *pClientAddr, PINT pnCliLen, UINT nTimeout)
+{
+	INT nReadLenth;
+	PSTR pszRecvBufferTemp;
+	struct timeval struTimeval;
+
+	struTimeval.tv_sec = nTimeout>0?nTimeout:60; /* ÉèÖÃ socket ³¬Ê±Ê±¼ä */
+	struTimeval.tv_usec = 0;
+
+	if(setsockopt(nServerSock, SOL_SOCKET, SO_RCVTIMEO, &struTimeval, sizeof(struTimeval)) < 0)
+	{
+		PrintDebugLogR(DBG_HERE,"ÉèÖÃ½ÓÊÕ³¬Ê±Ê±¼ä³ö´í[%s]\n",strerror(errno));
+		return EXCEPTION;
+	}
+	pszRecvBufferTemp=pszRecvBuffer;
+
+    *pnCliLen = sizeof (struct sockaddr);
+    nReadLenth=recvfrom(nServerSock,pszRecvBufferTemp,nRecvBufferLen,
+        0, pClientAddr, (socklen_t *)pnCliLen);
+    if(nReadLenth < 0)
+    {
+        PrintDebugLogR(DBG_HERE,"RecvUdpR ¶ÁÈ¡Êý¾Ý´íÎó[%s]\n",
+            strerror(errno));
+        return EXCEPTION;
+    }
+
+    return nReadLenth;
+}
+
+static VOID Usage(PSTR pszProg)
+{
+    fprintf(stderr, "network management system(grrusend) V%s\n", VERSION);
+    fprintf(stderr, "%s start (startup program)\n"
+            "%s stop  (close program) \n" , pszProg, pszProg);
+}
+
+
+// ÍË³ö´¦Àí
+static VOID SigHandle(INT nSigNo) 
+{
+	if(nSigNo!=SIGTERM)
+		return;
+	
+	CloseDatabase();
+	exit(0);
+}
+
+//ASCIIÂë²ð·Ö´¦Àí(ASCII×¨³Ì³ÉHEX)
+// ½âÎöºó³¤¶È»á±ä´ó
+BOOL AscEsc(BYTEARRAY *Pack)
+{
+ 	//¶Ô³ýÆðÊ¼±êÖ¾ºÍ½áÊø±êÖ¾ÍâµÄËùÓÐÊý¾Ý×ªÒå
+	int len = (Pack->Len-2)*2+2;
+	BYTE pdu[len+1];		 //×ªÒå
+	BYTE m_Pdu[Pack->Len+1]; //Ô­ÎÄ
+	
+	memset(m_Pdu, 0, Pack->Len);
+	memcpy(m_Pdu, Pack->pPack, Pack->Len);
+	
+	memset(pdu, 0, len+1);
+	   
+	BYTE Hivalue,Lovalue;
+	int i, j;
+	for(i=1, j=1; i<Pack->Len-1; i++)
+	{
+		Hivalue=m_Pdu[i]/16;
+		Lovalue=m_Pdu[i]%16;
+		Hivalue=Hivalue<10?Hivalue+48:Hivalue+55;
+		Lovalue=Lovalue<10?Lovalue+48:Lovalue+55;
+		pdu[j++]=Hivalue;
+		pdu[j++]=Lovalue;
+	}
+	pdu[0] = 0x7E;
+	pdu[j] = 0x7E;
+	
+	//Çå³ýµÝ½øÀ´µÄÊý¾Ý
+	memset(Pack->pPack, 0, len+1);
+	Pack->Len = len;
+	memcpy(Pack->pPack, pdu, len);
+	return TRUE;
+}
+
+//·´ÏòASCIIÂë²ð·Ö´¦Àí
+//Pack ´ý½âÎöµÄÊý¾Ý
+//m_Pdu Îª·´ÏòºóµÄ½á¹û
+// ½âÎöºó³¤¶È»á±äÐ¡
+BOOL AscUnEsc(BYTEARRAY *Pack)
+{
+	int Hivalue,Lovalue,temp;
+	int i, j;
+	char m_Pdu[MAX_BUFFER_LEN];
+	
+	bufclr(m_Pdu);
+	m_Pdu[0]=0x7E;
+	for(i=1,j=1; i<Pack->Len-1; i++)
+	{
+		temp=Pack->pPack[i];
+		Hivalue=(temp>=48&&temp<=57)?temp-48:temp-55;
+		temp=Pack->pPack[i+1];
+	 	Lovalue=(temp>=48&&temp<=57)?temp-48:temp-55;
+		m_Pdu[j] = (Hivalue*16+Lovalue);
+		j++;
+		i++;
+	}
+	m_Pdu[j] = 0x7E;
+	j++;
+	
+	memset(Pack->pPack, 0, j+1);
+	Pack->Len = j;
+	memcpy(Pack->pPack, m_Pdu, j);
+
+	return TRUE;
+}
+
+/**
+ * CreateConnectSocket() µÄ¿ÉÖØÈë°æ±¾
+ * ´´½¨µ½·þÎñÆ÷µÄÁ¬½Ó
+ *
+ * pszHostString	ÒªÁ¬½ÓµÄÖ÷»úÃû³Æ
+ * nPort		ÒªÁ¬½ÓµÄÖ÷»ú¶Ë¿Ú
+ * nTimeout	³¬Ê±µÄÃëÊý.Îª0¾Í¹ÓÃ³¬Ê±Ê±¼äÎª60
+ *
+ * ³É¹¦·µ»Ø Á¬½ÓºÃµÄÌ×½Ó×Ö Ê§°Ü·µ»Ø -1
+ */
+INT CreateConnectSocketR(PCSTR pszHostString,UINT nPort, UINT nTimeout)
+{
+	INT nConnectFd;
+	struct sockaddr_in struInAddr;
+	struct hostent * pstruHost;
+	struct timeval struTimeval;
+    pthread_t ThreadId = pthread_self();
+
+	memset(&struInAddr,0,sizeof(struInAddr));
+	if((inet_aton(pszHostString,(struct in_addr *)&struInAddr.sin_addr))==0)
+	{
+		if((pstruHost=gethostbyname(pszHostString))==NULL)
+		{
+			PrintDebugLogR(DBG_HERE,"Failed to get host ip [%s]\n",
+				hstrerror(h_errno));
+			return -1;
+		}
+		struInAddr.sin_addr=*(struct in_addr *)pstruHost->h_addr_list[0];
+	}
+	struInAddr.sin_family=AF_INET;
+	struInAddr.sin_port=htons(nPort);
+
+	nConnectFd=socket(AF_INET,SOCK_STREAM,0);
+	if(nConnectFd==-1)
+	{
+		PrintDebugLogR(DBG_HERE,"[%X] Failed to execute socket() [%s]\n", ThreadId, strerror(errno));
+		return -1;
+	}
+
+	struTimeval.tv_sec = nTimeout>0?nTimeout:60; /* ÉèÖÃ socket ³¬Ê±Ê±¼ä */
+	struTimeval.tv_usec = 0;
+	if(setsockopt(nConnectFd, SOL_SOCKET, SO_RCVTIMEO, &struTimeval, sizeof(struTimeval)) < 0)
+	{
+		PrintDebugLogR(DBG_HERE,"[%X] Failed to execute setsockopt() [%s]\n", ThreadId, strerror(errno));
+		close(nConnectFd);
+		return EXCEPTION;
+	}
+
+	if(connect(nConnectFd,(struct sockaddr *)&struInAddr,sizeof(struct sockaddr))==-1)
+	{
+		PrintDebugLogR(DBG_HERE,"[%X] Failed to execute connect() [%s]\n", ThreadId, strerror(errno));
+		close(nConnectFd);
+		return EXCEPTION;
+	}
+
+	return nConnectFd;
+}
+
+/**
+ * SendSocketNoSync µÄ¿ÉÖØÈë°æ±¾
+ * ÎÞÍ¬²½×Ö·û´ÓSocket·¢ËÍ±¨ÎÄ
+ * Input:
+ *	nConnectFd 	Á¬½ÓµÄÎÄ¼þÃèÊö·û
+ *	pszSendBuffer	·¢ËÍ»º³åÇø
+ *	nSendBufferLenth	Òª·¢ËÍµÄ±¨ÎÄ³¤¶È
+ *	nTimeout		³¬Ê±Ê±¼ä(Ãë),Èç¹ûÎª0Ôò²ÉÓÃÈ±Ê¡µÄ³¬Ê±Ê±¼ä60
+ *
+ * Returns ³É¹¦·µ»ØNORMAL Ê§°Ü·µ»ØEXCEPTION
+ */
+RESULT SendSocketNoSyncR(INT nConnectFd,PSTR pszSendBuffer,UINT nSendBufferLenth, UINT nTimeout)
+{
+	INT nWritenLenth;
+	PSTR pszSendBufferTemp;
+	struct timeval struTimeval;
+    pthread_t ThreadId = pthread_self();
+
+	struTimeval.tv_sec = nTimeout>0?nTimeout:60; /* ÉèÖÃ socket ³¬Ê±Ê±¼ä */
+	struTimeval.tv_usec = 0;
+	if(setsockopt(nConnectFd, SOL_SOCKET, SO_SNDTIMEO,
+		&struTimeval, sizeof(struTimeval)) < 0){
+		PrintDebugLogR(DBG_HERE,"[%X] Failed to set timeout for socket [%s]\n", ThreadId, strerror(errno));
+		return EXCEPTION;
+	}
+	pszSendBufferTemp=pszSendBuffer;
+	while (nSendBufferLenth > 0)
+	{
+		nWritenLenth=send(nConnectFd,pszSendBufferTemp,nSendBufferLenth, 0);
+		if (nWritenLenth < 0)
+		{
+			PrintDebugLogR(DBG_HERE, "[%X] SendSocketNoSyncR failed to send msg[%s]\n",
+				ThreadId, strerror(errno));
+			return EXCEPTION;
+		}
+		nSendBufferLenth-=nWritenLenth;
+		pszSendBufferTemp+=nSendBufferLenth;
+	}
+
+	return NORMAL;
+}
+
+/**
+ * RecvSocketNoSync µÄ¿ÉÖØÈë°æ±¾
+ *ÎÞÍ¬²½×Ö·û´ÓSocket½ÓÊÕÊý¾Ý
+ *Input:
+ *	nConnectFd	Á¬½ÓµÄÎÄ¼þÃèÊö·û
+ *	pszRecvBuffer	½ÓÊÕ»º³åÇø
+ *	nRecvBufferLen	Òª½ÓÊÕµÄ³¤¶È
+ *	nTimeout		³¬Ê±Ê±¼ä(Ãë),Èç¹ûÎª0Ôò²ÉÓÃÈ±Ê¡µÄ³¬Ê±Ê±¼ä60
+ *
+ * ³É¹¦·µ»ØNORMAL Ê§°Ü·µ»ØEXCEPTION
+ */
+RESULT RecvSocketNoSyncR(INT nConnectFd,PSTR pszRecvBuffer,UINT nRecvBufferLen,UINT nTimeout)
+{
+	INT nReadLenth = -1;
+	PSTR pszRecvBufferTemp;
+	struct timeval struTimeval;
+
+	struTimeval.tv_sec = nTimeout>0?nTimeout:60; /* ÉèÖÃ socket ³¬Ê±Ê±¼ä */
+	struTimeval.tv_usec = 0;
+	if(setsockopt(nConnectFd, SOL_SOCKET, SO_RCVTIMEO,
+		&struTimeval, sizeof(struTimeval)) < 0){
+		PrintDebugLogR(DBG_HERE,"Failed to set timeout for socket [%s]\n", strerror(errno));
+		return EXCEPTION;
+	}
+
+	pszRecvBufferTemp = pszRecvBuffer;
+    int nRetry = 3;
+	while(nRecvBufferLen>0)
+	{
+		nReadLenth = recv(nConnectFd, pszRecvBufferTemp, nRecvBufferLen, 0);
+		if (nReadLenth < 0)
+		{
+            if (errno == EAGAIN && nRetry--)
+                continue;
+
+			PrintDebugLogR(DBG_HERE,"Failed to recv msg from socket(%d)[%s]\n",
+				nConnectFd, strerror(errno));
+			return EXCEPTION;
+		}
+		else if(nReadLenth == 0)
+		{
+			return NORMAL;
+		}
+		nRecvBufferLen-=nReadLenth;
+		pszRecvBufferTemp+=nReadLenth;
+        break;
+	}
+
+	return nReadLenth;
+}
+
+/*
+ * Í¬GPRSSERV³ÌÐòÍ¨ÐÅ£¬µÈÍ¬GPRSSEND
+ * ExchDataGprsSvr() µÄ¿ÉÖØÈë°æ
+ */
+static int ExchDataGprsSvrR(PSTR pszRespBuffer)
+{
+	STR szBuffer[MAX_BUFFER_LEN];
+	INT nConnectFd;
+    pthread_t ThreadId = pthread_self();
+    int nTimeOut = 600; /* unit: second */
+
+	/*
+     * timeout is 60 seconds, give gprsserv more time to accept
+	 */
+	if((nConnectFd = CreateConnectSocketR("127.0.0.1", 8803, nTimeOut)) < 0)
+	{
+		PrintDebugLogR(DBG_HERE,
+			"[%X] Failed to connect to '127.0.0.1:8803'\n", ThreadId);
+		return -1;
+	}
+
+	if(SendSocketNoSyncR(nConnectFd, pszRespBuffer, strlen(pszRespBuffer), nTimeOut) < 0)
+	{
+		PrintDebugLogR(DBG_HERE, "[%X] Failed to send msg to GPRSSERV: %s\n", ThreadId, strerror(errno));
+		close(nConnectFd);
+		return -1;
+	}
+    PrintDebugLogR(DBG_HERE, "[%X] Send msg to GPRSSERV [%s]\n", ThreadId, pszRespBuffer);
+
+	memset(szBuffer, 0, sizeof(szBuffer));
+	/*
+     * 1. just check if gprsserv has received packet, so it's not neccesary to recv all datas that gprsserv respond.
+     * 2. timeout is 600 seconds, give gprsserv more time to receive the msg.
+	 */
+	if(RecvSocketNoSyncR(nConnectFd, szBuffer, 4, nTimeOut) <= 0)
+	{
+		PrintDebugLogR(DBG_HERE, "[%X] Failed to receive msg from GPRSSERV: %s\n", ThreadId, strerror(errno));
+		close(nConnectFd);
+		return -1;
+	}
+    PrintDebugLogR(DBG_HERE, "[%X] Receive msg from GPRSSERV [%s]\n", ThreadId, szBuffer);
+	
+	close(nConnectFd);
+
+	return 0;
+}
+
+#if 0
+static void *DeliverThreadGprsserv(void *arg)
+{
+	TASKPARASTRU *pstruTaskPara = NULL, *pstruTaskParaSafe = NULL;
+	PSTR pPack = NULL;
+    int nRet = -1;
+    int i;
+ 
+    while (1)
+    {
+        pthread_mutex_lock(&g_packets_lock);
+        if (list_empty(&g_packets_gprsserv))
+        {
+            pthread_mutex_unlock(&g_packets_lock);
+            sleep(1);
+            continue;
+        }
+
+        list_for_each_entry_safe(pstruTaskPara, pstruTaskParaSafe, &g_packets_gprsserv, list)
+        {
+            list_del(&pstruTaskPara->list);
+            break;
+        }
+        pthread_mutex_unlock(&g_packets_lock);
+
+        for (i = 0; i < nCfgResendTimes; i++) {
+            pPack = (PSTR)pstruTaskPara->struPack.pPack;
+            nRet = ExchDataGprsSvrR(pPack);
+            if (nRet == 0)
+                break;
+        }
+
+        FreeTaskPara(pstruTaskPara);
+    }
+
+    return NULL;
+}
+#endif
+
+/**
+ * ¸üÐÂne_gprsqueue±í×´Ì¬
+ * @para[in] pszIds: ¶à¸öqs_id£¬ÓÃ¶ººÅ·Ö¸ô
+ * @para[in] pszMsgStat: qs_id ¶ÔÓ¦µÄ¼ÇÂ¼ÐèÒª¸üÐÂµÄ×´Ì¬
+ */
+static RESULT UpdateGprsQueueMsgstat(int nDcsId, PSTR pszMsgStat)
+{
+	char szSql[MAX_BUFFER_LEN];
+	INT nDelay = 0;
+	INT nRetry = 0;
+    pthread_t ThreadId = pthread_self();
+
+	if (strcmp(pszMsgStat, OMC_SENT_MSGSTAT) == 0)
+    { /* success to send task */
+		nDelay = 0;
+		nRetry = 0;
+    }
+    else if (strcmp(pszMsgStat, OMC_NOTSND_MSGSTAT) == 0)
+	{ /* failed to send task, but have a chance to retry it */
+		nDelay = 0;
+		nRetry = 1;
+	}
+    else if (strcmp(pszMsgStat, OMC_FAIL_MSGSTAT) == 0)
+    { /* failed to send task, and have no chance to retry it */
+        nDelay = 0;
+        nRetry = 0;
+    }
+    else
+    {
+        PrintDebugLogR(DBG_HERE, "Invalid stat: %s\n", pszMsgStat);
+    }
+
+	memset(szSql, 0, sizeof(szSql));
+	snprintf(szSql, sizeof(szSql),
+		"update ne_gprsqueue set "
+		"qs_msgstat='%s', qs_lasttime='%s' %s "
+		"where qs_id = %d",
+		pszMsgStat, MakeSTimeFromITime((INT)time(NULL)+ nDelay), nRetry?",qs_retrytimes=qs_retrytimes+1":"", nDcsId);
+
+	PrintDebugLogR(DBG_HERE, "[%X] ¿ªÊ¼Ö´ÐÐSQL[%s]\n", ThreadId, szSql);
+	if(ExecuteSQL(szSql) != NORMAL)
+	{
+		PrintDebugLogR(DBG_HERE, "Ö´ÐÐSQLÓï¾äÊ§°Ü[%s][%s]\n",
+			szSql, GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	CommitTransaction();
+	return NORMAL; 
+}
+
+/**
+ * ClientSendRecvUdp() µÄ¿ÉÖØÈë°æ
+ * ·¢ËÍUDP±¨ÎÄµ½·þÎñÆ÷
+ *	
+ * pszIpAddr	·þÎñÆ÷µÄIPµØÖ·(Èç¹ûÎª¿ÕÔò·¢ËÍµ½127.0.0.1)
+ * nPort		·þÎñÆ÷¼àÌýµÄ¶Ë¿ÚºÅ
+ * pszBuffer	·¢ËÍ»º³åÇø
+ * nSendBufferLen	Òª·¢ËÍµÄ±¨ÎÄ³¤¶È
+ *
+ * Returns	³É¹¦·µ»ØÊÕµ½µÄ×Ö½ÚÊý£»Ê§°Ü·µ»ØEXCEPTION
+ */
+RESULT ClientSendRecvUdpR(PCSTR pszIpAddr,UINT nPort,PSTR pszBuffer,INT nSendBufferLen, int nMaxBufferLen)
+{
+	INT nFd;
+	struct sockaddr_in struServerAddr;
+	struct sockaddr_in struSendAddr;
+	struct sockaddr_in struRecvAddr;
+	struct hostent *pstruHost;
+	INT nLen, nAddrLen;
+    char szRecvBuffer[MAX_BUFFER_LEN];
+
+	if(pszIpAddr==NULL)
+		pszIpAddr=LOCAL_HOST_IP_ADDR;
+
+	memset(&struServerAddr,0,sizeof(struServerAddr));
+	if((inet_aton(pszIpAddr,(struct in_addr *)&struServerAddr.sin_addr))==0)
+	{
+		pstruHost=gethostbyname(pszIpAddr);
+		if(pstruHost==NULL)
+		{
+			PrintDebugLogR(DBG_HERE,"Failed to execute gethostbyname()[%s]\n",hstrerror(h_errno));	
+			return EXCEPTION;
+		}
+		struServerAddr.sin_addr=*(struct in_addr *)pstruHost->h_addr_list[0];
+	}
+	struServerAddr.sin_port=htons(nPort);
+	struServerAddr.sin_family=AF_INET;
+
+	nFd=socket(AF_INET,SOCK_DGRAM,0);
+	if(nFd==-1)
+	{
+		PrintDebugLogR(DBG_HERE,"Failed to execute socket() [%s]\n", strerror(errno));
+		return EXCEPTION;
+	}
+
+	/* Èç¹ûÖ¸¶¨ÁË±¾µØ IP µØÖ·£¬¾Í°ó¶¨ */
+	if (*szLocalIpAddr)
+	{
+		memset(&struSendAddr, 0, sizeof (struct sockaddr_in));
+		struSendAddr.sin_family = AF_INET;
+		if((inet_aton(szLocalIpAddr,(struct in_addr *)&struSendAddr.sin_addr))==0)
+			PrintDebugLogR(DBG_HERE,"Failed to inet_aton(%s): %s\n",
+				szLocalIpAddr, hstrerror(h_errno));
+		else if(bind(nFd, (struct sockaddr *)&struSendAddr, sizeof (struct sockaddr)) < 0)
+			PrintDebugLogR(DBG_HERE,
+				"Failed to bind IP(%s), send msg with any valid IP address\n", szLocalIpAddr);
+	}
+
+	/* ×ª»»Ô¶¶ËµÄ IP µØÖ· */
+	if((inet_aton(pszIpAddr,(struct in_addr *)&struServerAddr.sin_addr))==0)
+	{
+        PrintDebugLogR(DBG_HERE,"Failed to inet_aton(%s): %s\n",
+                pszIpAddr, hstrerror(h_errno));
+		close(nFd);
+		return EXCEPTION;
+	}
+
+	//·¢ËÍ±¨ÎÄ
+	nLen=SendUdpR(nFd, pszBuffer, nSendBufferLen,
+		(struct sockaddr*)&struServerAddr, sizeof(struServerAddr),
+		SOCK_TIMEOUT);
+	if (nLen < 0)
+	{
+		close(nFd);
+		return EXCEPTION;
+	}
+
+	//½ÓÊÕ±¨ÎÄ
+	memset(szRecvBuffer, 0, sizeof (szRecvBuffer));
+	nAddrLen = sizeof(struRecvAddr);
+	nLen=RecvUdpR(nFd, szRecvBuffer, sizeof (szRecvBuffer)-1,
+		(struct sockaddr*)&struRecvAddr, &nAddrLen, SOCK_TIMEOUT);
+
+	close(nFd);
+
+    if (nLen > 0) {
+        memset(pszBuffer, 0, nMaxBufferLen);
+        memcpy(pszBuffer, szRecvBuffer, nLen);
+        return nLen;
+    } else{
+        PrintDebugLogR(DBG_HERE, "[%X] Failed to recv from NE\n", pthread_self());
+		return EXCEPTION;
+    }
+}
+
+static void _setTaskState(int nDcsId, int nState)
+{
+    TASKSTATESTRU *pstruTaskNode;
+
+    pthread_mutex_lock(&gTaskStateList->lock);
+    list_for_each_entry(pstruTaskNode, &gTaskStateList->tasks, list) {
+        if (pstruTaskNode->nDcsId == nDcsId)
+        {
+            pstruTaskNode->nState = nState;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&gTaskStateList->lock);
+}
+
+static int _UnEsc_c(BYTEARRAY *Pack)
+{
+    int i, j;
+    char m_Pdu[MAX_BUFFER_LEN] = {0};
+    int m_Len;
+
+    if (Pack == NULL || Pack->pPack == NULL \
+            || Pack->Len < 10 || Pack->Len > sizeof (m_Pdu))
+        return -1;
+
+    for(i=1, j=0; i<Pack->Len-1; i++, j++)
+    {
+        if(Pack->pPack[i]==0x5E && Pack->pPack[i+1]==0x5D)
+        {
+            m_Pdu[j] = Pack->pPack[i];
+            i++;
+        }
+        else if(Pack->pPack[i]==0x5E && Pack->pPack[i+1]==0x7D)
+        {
+            m_Pdu[j] = 0x7E;
+            i++;
+        }
+        else
+        {
+            m_Pdu[j] = Pack->pPack[i];
+        }
+
+    }
+    m_Len = j;
+    memcpy(Pack->pPack, m_Pdu, m_Len);
+
+    return 0;
+}
+
+static int _is_valid_resp_pkg(char *pkg, int len)
+{
+    BYTEARRAY Pack;
+    unsigned char pkg_tmp[MAX_BUFFER_LEN];
+
+    if (len < 11 || len > sizeof (pkg_tmp))
+        return 0;
+
+    Pack.Len = len;
+    Pack.pPack = pkg_tmp;
+    memcpy(pkg_tmp, pkg, len);
+    if (_UnEsc_c(&Pack) < 0) {
+        PrintDebugLogR(DBG_HERE, "Failed to UnEsc_c()\n");
+        return 0;
+    }
+
+#if 0
+    int i, length;
+    char pkg_tmp2[128] = {0};
+    for (i = 0; i < len; i++) {
+        length = strlen(pkg_tmp2);
+        snprintf(pkg_tmp2+length, sizeof (pkg_tmp2)-length, "%.2X", pkg_tmp[i]);
+    }
+    PrintDebugLogR(DBG_HERE, "Check response: %s\n", pkg_tmp2);
+#endif
+
+    /* NP flag is set to 0x01, means NE is busy */
+    if (pkg_tmp[9] == 0x01) {
+        PrintDebugLogR(DBG_HERE, "[%X] Invalid response, NP flag: %x\n", pthread_self(), pkg_tmp[9]);
+        return 0;
+    }
+
+    return 1;
+}
+
+void ProcessGprsOneTask(TASKPARASTRU *pstruTaskPara)
+{
+	PSTR pPack;
+	int Len, i;
+	int nRecvLen;
+    pthread_t ThreadId = pthread_self();
+    char pdu[MAX_BUFFER_LEN] = {0};
+    char pdu_hex[MAX_BUFFER_LEN] = {0};
+    unsigned char tmp_hex[MAX_BUFFER_LEN] = {0};
+    int nIsSuccess = 0;
+    int nRet = -1;
+    int timeout_cnt = 0;
+    int invalid_resp_cnt = 0;
+    BYTEARRAY Pack;
+
+    if (pstruTaskPara == NULL)
+        return;
+
+	pPack = (PSTR)pstruTaskPara->struPack.pPack;
+	Len = pstruTaskPara->struPack.Len;
+
+    snprintf(pdu, sizeof (pdu) - 1, pPack);
+    /* ascii to hex */
+    if(!AscUnEsc(&pstruTaskPara->struPack))
+    {
+        PrintDebugLogR(DBG_HERE, "[%X] [%d] ×ªÒå´íÎó[%s]\n", ThreadId, pstruTaskPara->nDcsId, pPack);
+        return;
+    }
+    /* »¹Ô­×ªÒåºó£¬struPack.Len Öµ»á±äÐ¡ */
+    Len = pstruTaskPara->struPack.Len;
+    memcpy(pdu_hex, pPack, Len);
+
+    /* communicate with NE */
+    nIsSuccess = 0;
+    for (i = 0; i < pstruTaskPara->nResendTimes; i++) {
+        memcpy(tmp_hex, pPack, Len);
+        Pack.pPack = tmp_hex;
+        Pack.Len = Len;
+        AscEsc(&Pack);
+        PrintDebugLogR(DBG_HERE, "[%X] [%d] ·¢ËÍ[%s][%d]±¨ÎÄ[%s]\n",
+                ThreadId, pstruTaskPara->nDcsId,
+                pstruTaskPara->szDeviceIp, pstruTaskPara->nPort, Pack.pPack);
+
+		nRecvLen = ClientSendRecvUdpR(pstruTaskPara->szDeviceIp,
+                pstruTaskPara->nPort, pPack, Len, MAX_BUFFER_LEN);
+		if (nRecvLen <= 0) {
+            timeout_cnt++;
+            if (timeout_cnt < 2 && timeout_cnt + invalid_resp_cnt < 3)
+                continue;
+            else
+                break;
+        }
+#if 0
+        memcpy(tmp_hex, pdu_hex, Len);
+        Pack.pPack = tmp_hex;
+        Pack.Len = Len;
+        AscEsc(&Pack);
+        PrintDebugLogR(DBG_HERE, "[%X] [%d] msg after recv[%s]\n",
+                ThreadId, pstruTaskPara->nDcsId, Pack.pPack);
+#endif
+
+        memcpy(tmp_hex, pPack, nRecvLen);
+        Pack.pPack = tmp_hex;
+        Pack.Len = nRecvLen;
+        AscEsc(&Pack);
+        PrintDebugLogR(DBG_HERE, "[%X] [%d] ½ÓÊÕÓ¦´ð±¨ÎÄ[%s]\n", ThreadId, pstruTaskPara->nDcsId, Pack.pPack);
+
+        if (_is_valid_resp_pkg(pPack, nRecvLen) == 0) {
+            invalid_resp_cnt++;
+            if (timeout_cnt+invalid_resp_cnt < 3) {
+                sleep(10);
+                memcpy(pPack, pdu_hex, Len);
+                continue;
+            } else
+                break;
+        }
+
+        /* hex to ascii */
+        pstruTaskPara->struPack.Len = nRecvLen;
+        if(!AscEsc(&pstruTaskPara->struPack))
+        {
+            PrintDebugLogR(DBG_HERE,"[%X] [%d] ×ªÒå´íÎó\n", ThreadId, pstruTaskPara->nDcsId);
+            break;
+        }
+
+        nIsSuccess = 1;
+        break;
+    }
+
+    if (nIsSuccess == 0) { /* failed to communicate with NE */
+        _setTaskState(pstruTaskPara->nDcsId, -1);
+        return;
+    }
+
+    nIsSuccess = 0;
+    for (i = 0; i < nCfgResendTimes; i++) {
+        pPack = (PSTR)pstruTaskPara->struPack.pPack;
+        nRet = ExchDataGprsSvrR(pPack);
+        if (nRet == 0) {
+            nIsSuccess = 1;
+            break;
+        }
+    }
+
+    if (nIsSuccess == 0) {
+        _setTaskState(pstruTaskPara->nDcsId, -1);
+        return;
+    }
+
+    /* work complete */
+    _setTaskState(pstruTaskPara->nDcsId, 1);
+}
+
+static void *DeliverThreadNe(void *arg)
+{
+	TASKPARASTRU *pstruTaskPara, *pstruTaskParaSafe;
+
+    while (1) {
+        pthread_mutex_lock(&g_packets_lock);
+        if (list_empty(&g_packets_ne)) {
+            pthread_mutex_unlock(&g_packets_lock);
+            sleep(1);
+            continue;
+        }
+        list_for_each_entry_safe(pstruTaskPara, pstruTaskParaSafe, &g_packets_ne, list) {
+            list_del(&pstruTaskPara->list);
+            break;
+        }
+        pthread_mutex_unlock(&g_packets_lock);
+
+        ProcessGprsOneTask(pstruTaskPara);
+        FreeTaskPara(pstruTaskPara);
+    }
+
+    return NULL;
+}
+
+static TASKSTATESTRU* _DupTaskState(TASKSTATESTRU *src)
+{
+    TASKSTATESTRU *new;
+
+    if (src == NULL)
+        return NULL;
+
+    new = (TASKSTATESTRU*)calloc(1, sizeof (TASKSTATESTRU));
+    if (new == NULL) {
+        PrintDebugLogR(DBG_HERE, "Failed to allocate memory\n");
+        return NULL;
+    }
+    new->nDcsId = src->nDcsId;
+    new->nState = src->nState;
+    return new;
+}
+
+/*
+ * ´¦ÀígprsÏûÏ¢¶ÓÁÐ
+ */
+RESULT ProcessGprsQueue()
+{
+	STR szSql[MAX_SQL_LEN];
+	/* followd variables save successfully qs_id or failed qs_id respectively */
+    char szDcsId[32];
+	CURSORSTRU struCursor;
+	STR szDataBuffer[MAX_BUFFER_LEN];
+	INT nDcsId, nPort;
+    int nMaxDcsId = 0; /* restore the max nDcsId at one round */
+	INT nDataLen=0;
+	UINT nSleepTime=0;
+	INT nRet;
+	STR szDeviceIp[20];
+	TASKPARASTRU *pstruTaskPara;
+    TASKSTATESTRU *pstruTaskState, *pstruTaskStateSafe, *pstruTaskStateNew;
+    int nHaveTasks = 0;
+    pthread_t ThreadId = pthread_self();
+    struct list_head to_update;
+    int nTaskLogId;
+    int nFindIt = 0;
+
+    INIT_LIST_HEAD(&to_update);
+	while(TRUE)
+	{
+        /* ping sql every 60 second */
+        SQLPingInterval(60);
+
+        /* clear remain tasks */
+		if(nSleepTime >= 1000)
+		{
+			if (strcmp(getenv("DATABASE"), "mysql") == 0)
+				sprintf(szSql,"delete from ne_gprsqueue where timestampdiff(hour, qs_eventtime, now()) > 6");
+			else
+				sprintf(szSql,"delete from ne_gprsqueue where qs_eventtime < sysdate-1");
+
+            PrintDebugLogR(DBG_HERE, "[%X] Executing [%s]\n", ThreadId, szSql);
+			nRet = ExecuteSQL(szSql);
+			if(nRet != NORMAL)
+				PrintDebugLogR(DBG_HERE,"[%X] Failed to executing [%s]: %s\n",ThreadId, szSql,GetSQLErrorMessage());
+			else
+				CommitTransaction();
+			
+			nSleepTime=0;
+        }
+        nSleepTime++;
+
+		/* step 1. walk the list of task state, update database */
+        int nSucceed=0, nFailed=0, nInProcessing=0, nUpdated=0, nTotal=0, nCount=0;
+        pthread_mutex_lock(&gTaskStateList->lock);
+        list_for_each_entry(pstruTaskState, &gTaskStateList->tasks, list) {
+            if (pstruTaskState->nState == 1) {
+                pstruTaskStateNew = _DupTaskState(pstruTaskState);
+                if (pstruTaskStateNew == NULL) {
+                    continue;
+                }
+                list_add(&pstruTaskStateNew->list, &to_update);
+                nSucceed++;
+                pstruTaskState->nState = 2;
+            } else if (pstruTaskState->nState == -1) {
+                pstruTaskStateNew = _DupTaskState(pstruTaskState);
+                if (pstruTaskStateNew == NULL) {
+                    continue;
+                }
+                list_add(&pstruTaskStateNew->list, &to_update);
+                nFailed++;
+                pstruTaskState->nState = 2;
+            } else if (pstruTaskState->nState == 0) {
+                nInProcessing++;
+            } else if (pstruTaskState->nState == 2) {
+                nUpdated++;
+            }
+            nTotal++;
+        }
+        nCount = gTaskStateList->nCount;
+        pthread_mutex_unlock(&gTaskStateList->lock);
+
+        list_for_each_entry_safe(pstruTaskState, pstruTaskStateSafe, &to_update, list) {
+            list_del(&pstruTaskState->list);
+            if (pstruTaskState->nState == 1)
+            {
+                //UpdateGprsQueueMsgstat(pstruTaskState->nDcsId, OMC_SENT_MSGSTAT);
+            }
+            else
+            {
+                UpdateGprsQueueMsgstat(pstruTaskState->nDcsId, OMC_FAIL_MSGSTAT);
+            }
+            free(pstruTaskState);
+        }
+
+		/* step 2. fetch tasks from database */
+		memset(szSql, 0, sizeof(szSql));
+        snprintf(szSql,sizeof(szSql),"select qs_id,qs_ip,qs_port,qs_telephonenum,qs_content,qs_retrytimes,qs_tasklogid from ne_gprsqueue "
+            "where qs_id > %d and qs_msgstat='%s' limit 100",
+            nMaxDcsId, OMC_NOTSND_MSGSTAT);
+
+        if (nHaveTasks == 1) {
+            sleep(2);
+            PrintDebugLogR(DBG_HERE, "[%X]success: %d, failed: %d, inprocessing: %d, updated: %d. [total: %d VS %d]\n",
+                    ThreadId, nSucceed, nFailed, nInProcessing, nUpdated, nTotal, gTaskStateList->nCount);
+
+            PrintDebugLogR(DBG_HERE, "[%X] Executing SQL[%s]\n", ThreadId, szSql);
+        } else {
+            sleep(5);
+            nMaxDcsId = 0;
+        }
+
+		if(SelectTableRecord(szSql,&struCursor) != NORMAL)
+		{
+			PrintDebugLogR(DBG_HERE,"[%X] Failed to execute SQL[%s][%s], exit\n",
+				ThreadId, szSql,GetSQLErrorMessage());
+			return EXCEPTION;
+		}
+
+        nHaveTasks = 0;
+		while (FetchCursor(&struCursor) == NORMAL)
+		{
+            nHaveTasks = 1;
+			strcpy(szDcsId, GetTableFieldValue(&struCursor, "qs_id"));
+            nDcsId = atoi(szDcsId);
+
+            /* ignore this task if already exists */
+			nFindIt = 0;
+            pthread_mutex_lock(&gTaskStateList->lock);
+            list_for_each_entry(pstruTaskState, &gTaskStateList->tasks, list) {
+                if (pstruTaskState->nDcsId == nDcsId) {
+                    nFindIt = 1;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&gTaskStateList->lock);
+            if (nFindIt == 1)
+                continue;
+
+            /* this is a valid task */
+			pstruTaskPara = CreateTaskPara();
+			if (pstruTaskPara == NULL) {
+				break;
+			}
+
+			bufclr(szDataBuffer);
+			strncpy(szDataBuffer, GetTableFieldValue(&struCursor, "qs_content"), sizeof (szDataBuffer));
+			nDataLen = strlen(szDataBuffer);
+            nTaskLogId = atoi(GetTableFieldValue(&struCursor, "qs_tasklogid"));
+			nPort = atoi(GetTableFieldValue(&struCursor, "qs_port"));
+			strcpy(szDeviceIp, GetTableFieldValue(&struCursor, "qs_ip"));
+			strncpy((STR*)pstruTaskPara->struPack.pPack, szDataBuffer, nDataLen);
+			pstruTaskPara->struPack.Len = nDataLen;
+			strcpy(pstruTaskPara->szDeviceIp, szDeviceIp);
+			pstruTaskPara->nPort = nPort;
+			pstruTaskPara->nDcsId = nDcsId;
+			pstruTaskPara->nTaskLogId = nTaskLogId;
+            if (nTaskLogId == 0) /* query task, just send 1 time */
+                pstruTaskPara->nResendTimes = 1;
+            else /* polling task, has 3 opportunities */
+                pstruTaskPara->nResendTimes = 3;
+
+            nRet = AddTaskState(pstruTaskPara->nDcsId);
+            if (nRet < 0) { /* maybe gTaskStateList is full */
+                FreeTaskPara(pstruTaskPara);
+            } else {
+                pthread_mutex_lock(&g_packets_lock);
+                list_add_tail(&pstruTaskPara->list, &g_packets_ne);
+                pthread_mutex_unlock(&g_packets_lock);
+                if (pstruTaskPara->nDcsId > nMaxDcsId)
+                    nMaxDcsId = pstruTaskPara->nDcsId;
+            }
+		}
+		FreeCursor(&struCursor);
+	}
+	return NORMAL;
+}
+
+
+/**
+ * ²âÊÔºóÌ¨½ø³ÌÊÇ·ñÕý³£ÔËÐÐ
+ * @param[in] nCmppPid: ºóÌ¨½ø³ÌµÄ pid ºÅ
+ * @return: Õý³£ - NORMAL; ²»Õý³£ - EXCEPTION
+ */
+RESULT TestTimeServPidStat(int nCmppPid)
+{
+	STR szShellCmd[MAX_STR_LEN];
+	STR szFileName[100];
+	INT nTempLen;
+	FILE *pstruFile;
+	
+	memset(szShellCmd,0,sizeof(szShellCmd));
+	snprintf(szShellCmd,sizeof(szShellCmd),"ps -e|awk '$1 == %d {print $4}'", nCmppPid);
+	if ((pstruFile=popen(szShellCmd,"r")) == NULL)
+	{
+		fprintf(stderr,"popenÓÐ´íÎó\n");
+		return EXCEPTION;
+	}
+	memset(szFileName, 0, sizeof(szFileName));
+	while(fgets(szFileName, 10, pstruFile) != NULL)
+	{
+		nTempLen=strlen(szFileName);
+		szFileName[nTempLen]=0;
+		if(strncmp(szFileName, "grrusend", 8)==0)
+		{
+			pclose(pstruFile);
+			return NORMAL;
+		}
+	}
+	pclose(pstruFile);
+
+	return EXCEPTION;
+}
+
+RESULT TimeServChildProcessWork(int nPid)
+{
+	struct sigaction struSigAction;
+	STR szTemp[MAX_STR_LEN];
+	STR szCfgSeg[100];
+
+	//¸üÐÂCMPP½ø³ÌºÅ
+	sprintf(szCfgSeg, "GRRUSENDPROC%d", nPid);
+	sprintf(szTemp, "%05d\n", (int)getpid());
+	ModifyCfgItem("grrusend.cfg", szCfgSeg, "GRRUSENDPID",szTemp);
+
+	if (GetCfgItemR("grrusend.cfg","THREADPOOL","MaxThrNum",szTemp) == NORMAL)
+		gMaxThrNum = atoi(szTemp);
+	if (GetCfgItemR("grrusend.cfg","THREADPOOL","ResendTimeToGprsserv",szTemp) == NORMAL)
+		nCfgResendTimes = atoi(szTemp);
+
+    gTaskStateList = (struct task_state_list*)calloc(1, sizeof (struct task_state_list));
+    if (gTaskStateList == NULL) {
+		PrintDebugLogR(DBG_HERE,"Failed to allocate memory for gTaskStateList\n");
+		return EXCEPTION;
+    }
+    gTaskStateList->nMaxCount = 5000;
+    INIT_LIST_HEAD(&gTaskStateList->tasks);
+    pthread_mutex_init(&gTaskStateList->lock, NULL);
+
+    INIT_LIST_HEAD(&g_packets_gprsserv);
+    INIT_LIST_HEAD(&g_packets_ne);
+    pthread_mutex_init(&g_packets_lock, NULL);
+
+    pthread_t threadid;
+    int i;
+#if 0
+    for (i = 0; i < 30; i++)
+        pthread_create(&threadid, NULL, DeliverThreadGprsserv, NULL);
+#endif
+    for (i = 0; i < gMaxThrNum; i++)
+        pthread_create(&threadid, NULL, DeliverThreadNe, NULL);
+
+	struSigAction.sa_handler=SigHandle;
+	sigemptyset(&struSigAction.sa_mask);
+	struSigAction.sa_flags=0;
+	if(sigaction(SIGTERM,&struSigAction,NULL)==-1)
+	{
+		PrintDebugLogR(DBG_HERE,"°²×°Çå³ý²Ù×÷ÈÎÎñ´íÎó[%s]\n", strerror(errno));
+		return EXCEPTION;
+	}
+
+	struSigAction.sa_handler=SIG_IGN;
+	sigemptyset(&struSigAction.sa_mask);
+	struSigAction.sa_flags=0;
+	if(sigaction(SIGPIPE,&struSigAction,NULL)==-1)
+	{
+		PrintDebugLogR(DBG_HERE,"°²×°Çå³ý²Ù×÷ÈÎÎñ´íÎó[%s]\n", strerror(errno));
+		return EXCEPTION;
+	}
+	
+	if(OpenDatabase(szServiceName,szDbName,szUser,szPwd)!=NORMAL)
+	{
+		PrintDebugLogR(DBG_HERE,"´ò¿ªÊý¾Ý¿â´íÎó[%s]\n",GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+
+	if (nPid == 1)
+	   ProcessGprsQueue();
+
+	CloseDatabase();
+	return NORMAL;
+}
+
+
+RESULT ParentForkWork(int nProcCount)
+{
+	STR szTemp[MAX_STR_LEN];
+	STR szCfgSeg[100];
+	INT nPid;
+	INT nListenSock=-1, nFd;
+	fd_set SockSet;
+	INT nMaxSock;
+	socklen_t nLen;
+	struct timeval struTimeout;
+	struct sockaddr_in struAddr;
+	
+	while(BOOLTRUE)
+	{
+		if (strcmp(szHostState, "master") == 0 && nListenSock < 0)
+		{
+			nListenSock=CreateListenSocket(NULL,nMasterPort);
+			if(nListenSock<0)
+			{
+				PrintDebugLogR(DBG_HERE,"´´½¨ÍøÂç½Ó¿Ú´íÎó\n");
+			}
+		}
+		if (strcmp(szHostState, "master") == 0 && nListenSock > 0)
+		{
+			FD_ZERO(&SockSet);
+			FD_SET(nListenSock,&SockSet);
+			nMaxSock=nListenSock;
+			struTimeout.tv_sec = 10;
+			struTimeout.tv_usec = 0;
+	
+				
+			switch(select(nMaxSock + 1, &SockSet, NULL, NULL, &struTimeout))
+			{
+				case -1:
+					PrintDebugLogR(DBG_HERE, "selectº¯Êýµ÷ÓÃ´íÎó[%s]\n", \
+						strerror(errno));
+					break;
+				case 0:
+					break;
+				default:
+					if(FD_ISSET(nListenSock,&SockSet))
+					{
+						nLen = sizeof(struAddr);
+						if((nFd = accept(nListenSock,(struct sockaddr *)&struAddr, &nLen)) < 0)
+								break;
+						sleep(1);
+						close(nFd);
+					}
+					break;
+			}
+		
+		}
+		if (strcmp(szHostState, "backup") == 0) 
+			sleep(10);
+		//¼à¿Ø×Ó½ø³Ì
+		for(nPid=1; nPid< nProcCount+1; nPid++)
+		{   
+			sprintf(szCfgSeg, "GRRUSENDPROC%d", nPid);
+
+			if (GetCfgItemR("grrusend.cfg", szCfgSeg, "GRRUSENDPID",szTemp) != NORMAL)
+				return EXCEPTION;
+			if (TestTimeServPidStat(atoi(szTemp)) == EXCEPTION)
+			{
+				switch (fork())
+				{
+					case -1:
+						PrintDebugLogR(DBG_HERE, "´´½¨×Ó½ø³ÌÊ§°Ü\n");
+						break;
+					case 0:
+					{
+						printf("´´½¨×Ó½ø³Ì\n");
+						TimeServChildProcessWork(nPid);
+						exit(0);
+					}
+					default:
+						break;
+				}
+			}
+		} 
+	}
+}
+
+/*
+ * Ö÷º¯Êý
+ */
+RESULT main(INT argc,PSTR argv[])
+{
+	STR szTemp[MAX_STR_LEN];
+	INT nProcCount, i;
+
+	if(argc!=2)
+	{
+		Usage(argv[0]);
+		return EXCEPTION;
+	}
+	if(strcmp(argv[1],"stop")==0)
+	{
+		sprintf(szTemp, "clearprg %s", argv[0]);
+		system(szTemp);
+		return NORMAL;
+	}
+	if(strcmp(argv[1],"start")!=0)
+	{
+		Usage(argv[0]);
+		return NORMAL;
+	}
+
+	if(TestPrgStat(argv[0])==NORMAL)
+	{
+        fprintf(stderr, "%s is running\n", argv[0]);
+		return EXCEPTION;
+	}
+
+	if(DaemonStart()!=NORMAL)
+	{
+		PrintDebugLogR(DBG_HERE,"Failed to execute DaemonStart()\n");
+		return EXCEPTION;
+	}
+	if(CreateIdFile(argv[0])!=NORMAL)
+	{
+        PrintErrorLog(DBG_HERE,"Failed to execute CreateIdFile()\n");
+		return EXCEPTION;
+	}
+	
+	if(GetDatabaseArg(szServiceName,szDbName,szUser,szPwd)!=NORMAL)
+	{
+		strcpy(szServiceName,"omc");
+		strcpy(szDbName,"omc");
+		strcpy(szUser,"omc");
+		strcpy(szPwd,"omc");
+	}
+	
+	if (GetCfgItemR("grrusend.cfg","GRRUSEND","MaxProcesses",szTemp) != NORMAL)
+		return EXCEPTION;
+	nProcCount = atoi(szTemp);
+	
+	if (GetCfgItemR("grrusend.cfg","GRRUSEND","ApplServPort",szTemp) != NORMAL)
+		return EXCEPTION;
+	nGprsServPort = atoi(szTemp);
+	
+	if (GetCfgItemR("grrusend.cfg","GRRUSEND","ApplServAddr",szGprsServIp) != NORMAL)
+		return EXCEPTION;
+		
+	if (GetCfgItemR("grrusend.cfg","CLUSTER","HostState",szHostState) != NORMAL)
+	{
+		strcpy(szHostState, "backup");
+	}
+	
+	if (GetCfgItemR("grrusend.cfg","CLUSTER","MasterIp", szMasterIp) != NORMAL)
+	{
+		strcpy(szMasterIp, "127.0.0.1");;
+	}
+	 
+	if (GetCfgItemR("grrusend.cfg","CLUSTER","MasterPort",szTemp) != NORMAL)
+		nMasterPort = 8841;
+	else
+		nMasterPort=atoi(szTemp);
+
+	/* »ñÈ¡°ó¶¨µÄIP£¬Èç¹û·þÎñÆ÷ÓÐ¶à¸öIP£¬ÓÃ»§¿ÉÖ¸¶¨Ò»¸öÓÃÓÚ·¢ËÍ */
+	if (GetCfgItemR("grrusend.cfg","GRRUSEND","GrruSendAddr",szLocalIpAddr) != NORMAL)
+		szLocalIpAddr[0] = 0;
+
+	for(i=1; i< nProcCount+1; i++)
+	{
+		 switch (fork())
+		{
+			case -1:
+				PrintDebugLogR(DBG_HERE, "Failed to fork()\n");
+				break;
+			case 0:
+			{
+				TimeServChildProcessWork(i);
+				exit(0);
+			}
+			default:
+				break;
+		}
+	}
+   
+	ParentForkWork(nProcCount);
+	
+	return NORMAL;
+}

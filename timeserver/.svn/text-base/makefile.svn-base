@@ -1,0 +1,23 @@
+#
+# 定时服务池编译脚本
+#
+include $(HOME)/make.dir/makefile.std
+
+all:timeserv houralarm dayalarm timetask
+
+timeserv:timeserver.o alarm_util.o
+	$(CCLINK)
+
+houralarm:houralarm.o
+	$(CCLINK)
+	
+repeatinfo:repeatinfo.o
+	$(CCLINK)
+mosalarm:mosalarm.o
+	$(CCLINK)
+	
+timetask:timetask.o
+	$(CCLINK)
+
+dayalarm:dayalarm.o alarm_util.o
+	$(CCLINK)

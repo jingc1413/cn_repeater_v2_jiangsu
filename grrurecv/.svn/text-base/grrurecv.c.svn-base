@@ -1,0 +1,577 @@
+/*
+ * 名称: GRRU采集服务器
+ *
+ * 修改记录:
+ * 付志刚 -		2010-06-12 创建
+ */
+#include <ebdgdl.h>
+#include <ebdgml.h>
+#include <omcpublic.h>
+#include <mobile2g.h>
+
+static STR szClientIp[30];
+static int nClientPort;
+static int nGprsPort;
+
+/*
+ * 进程池子进程构造函数 
+ */
+static RESULT StartPoolChildPro(PVOID pArgment)
+{
+	STR szService[MAX_STR_LEN];
+	STR szDbName[MAX_STR_LEN];
+	STR szUser[MAX_STR_LEN];
+	STR szPwd[MAX_STR_LEN];
+
+	if(GetDatabaseArg(szService, szDbName, szUser, szPwd) != NORMAL)
+	{
+		strcpy(szService, "omc");
+		strcpy(szDbName, "omc");
+		strcpy(szUser, "omc");
+		strcpy(szPwd, "omc");
+	}
+
+	if(OpenDatabase(szService, szDbName, szUser, szPwd) != NORMAL)
+	{
+		PrintErrorLog(DBG_HERE, "进程池子进程打开数据库发生错误 [%s]\n",
+			GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	
+	//PrintDebugLog(DBG_HERE, "进程返回结束\n");
+	return NORMAL;
+}
+
+/*
+ * 通讯进程池子进程析构函数
+ */
+static RESULT EndPoolChildPro(PVOID pArgment)
+{
+	
+	CloseDatabase();
+	//PrintDebugLog(DBG_HERE, "关闭数据库成功\n");
+
+	return NORMAL;
+}
+
+
+
+/*
+ * 使用说明
+ */
+static VOID Usage(PSTR pszProg)
+{
+	fprintf(stderr, "网管系统(GRRU采集服务程序)\n");
+	fprintf(stderr, "%s start 启动程序\n"
+					"%s stop 停止程序\n"
+					"%s -h 显示本信息\n", pszProg, pszProg, pszProg);
+}
+
+int strHexToInt(char* strSource) 
+{ 
+    int nTemp=0; 
+    int i,j,len,flen; 
+
+    len = strlen(strSource); 
+    flen = --len; 
+    for(i = 0; i <= len; i++) 
+    { 
+        if(strSource[i] > 'g' || strSource[i] < '0' || ( strSource[i] > '9' && strSource[i] < 'A' ) ) 
+        { 
+            PrintErrorLog(DBG_HERE,"请输入正确的16进制字符串!输入错误 [%s]\n", strSource);
+            return -1; 
+        } 
+        else 
+        { 
+            int nDecNum; 
+            switch(strSource[i]) 
+            { 
+                case 'a': 
+                case 'A': nDecNum = 10; break; 
+                case 'b': 
+                case 'B': nDecNum = 11; break; 
+                case 'c': 
+                case 'C': nDecNum = 12; break; 
+                case 'd': 
+                case 'D': nDecNum = 13; break; 
+                case 'e': 
+                case 'E': nDecNum = 14; break; 
+                case 'f': 
+                case 'F': nDecNum = 15; break; 
+                case '0': 
+                case '1': 
+                case '2': 
+                case '3': 
+                case '4': 
+                case '5': 
+                case '6': 
+                case '7': 
+                case '8': 
+                case '9': nDecNum = strSource[i] - '0'; break; 
+                default: return 0; 
+            } 
+        
+            for(j = flen; j > 0; j-- ) 
+            { 
+                nDecNum *= 16; 
+            } 
+            flen--; 
+            nTemp += nDecNum; 
+        
+        } 
+    } 
+    return nTemp;
+}
+
+//反向ASCII码拆分处理
+//Pack 待解析的数据
+//m_Pdu 为反向后的结果
+BOOL AscUnEsc(BYTEARRAY *Pack)
+{
+	int Hivalue,Lovalue,temp;
+	int i, j;
+	char m_Pdu[4096];
+	
+	bufclr(m_Pdu);
+	m_Pdu[0]=0x7E;
+	for(i=1,j=1; i<Pack->Len-1; i++)
+	{
+		temp=Pack->pPack[i];
+		Hivalue=(temp>=48&&temp<=57)?temp-48:temp-55;
+		temp=Pack->pPack[i+1];
+	 	Lovalue=(temp>=48&&temp<=57)?temp-48:temp-55;
+		m_Pdu[j] = (Hivalue*16+Lovalue);
+		j++;
+		i++;
+	}
+	m_Pdu[j] = 0x7E;
+	j++;
+	
+	//清除递进来的数据
+    memset(Pack->pPack, 0, j+1);
+	Pack->Len = j;
+	memcpy(Pack->pPack, m_Pdu, j);
+	    
+    
+	return TRUE;
+}
+
+//ASCII码拆分处理(ASCII专程成HEX)
+BOOL AscEsc(BYTEARRAY *Pack)
+{
+ 	//对除起始标志和结束标志外的所有数据转义
+	int len = (Pack->Len-2)*2+2;
+	BYTE pdu[len+1];         //转义
+	BYTE m_Pdu[Pack->Len+1]; //原文
+    
+    memset(m_Pdu, 0, Pack->Len);
+    memcpy(m_Pdu, Pack->pPack, Pack->Len);
+    
+    memset(pdu, 0, len+1);
+       
+	BYTE Hivalue,Lovalue;
+	int i, j;
+	for(i=1, j=1; i<Pack->Len-1; i++)
+	{
+		Hivalue=m_Pdu[i]/16;
+        Lovalue=m_Pdu[i]%16;
+        Hivalue=Hivalue<10?Hivalue+48:Hivalue+55;
+		Lovalue=Lovalue<10?Lovalue+48:Lovalue+55;
+		pdu[j++]=Hivalue;
+		pdu[j++]=Lovalue;
+	}
+	pdu[0] = 0x7E;
+	pdu[j] = 0x7E;
+	
+	//清除递进来的数据
+    memset(Pack->pPack, 0, len+1);
+	Pack->Len = len;
+	memcpy(Pack->pPack, pdu, len);
+	//PrintDebugLog(DBG_HERE, "生成2G协议报文[%s]\n", Pack->pPack);
+	return TRUE;
+}
+
+/*
+ * 同GPRSSERV程序通信，等同GPRSSEND
+ */
+RESULT ExchDataGprsSvr(PSTR pszRespBuffer)
+{
+	STR szBuffer[100];
+	INT nConnectFd;
+
+	/*
+	 *	建立连接
+	 */
+	if((nConnectFd = CreateConnectSocket("127.0.0.1", nGprsPort, 60)) < 0)
+	{
+		PrintErrorLog(DBG_HERE, \
+			"同应用服务程序[127.0.0.1][%d]建立连接错误,请确信gprsserv已经启动\n", nGprsPort);
+		return EXCEPTION;
+	}
+		
+	/*
+	 *	发送数据到GPRSSERV
+	 */
+	if(SendSocketNoSync(nConnectFd, pszRespBuffer, strlen(pszRespBuffer), 60) < 0)
+	{
+		PrintErrorLog(DBG_HERE, "发送数据到GPRSSERV服务错误\n");
+		close(nConnectFd);
+		return EXCEPTION;
+	}
+	
+	/*
+	 *	接收GPRSSERV程序的应答
+	 */
+	memset(szBuffer, 0, sizeof(szBuffer));
+	if(RecvSocketNoSync(nConnectFd, szBuffer, sizeof(szBuffer), 60) < 0)
+	{
+		PrintErrorLog(DBG_HERE, "接收数据GPRSSERV服务的应答报文错误\n");
+		close(nConnectFd);
+		return EXCEPTION;
+	}
+	
+	close(nConnectFd);
+
+	return NORMAL;
+}
+
+
+//保存到ne_deviceip表中
+RESULT SaveDeviceIp(INT nRepeaterId, INT nDeviceId)
+{
+    char szSql[MAX_BUFFER_LEN];
+	
+	if (strcmp(szClientIp, "0.0.0.0") == 0)
+		return EXCEPTION;
+		
+    memset(szSql, 0, sizeof(szSql));
+    
+    snprintf(szSql, sizeof(szSql), "update ne_deviceip set qs_deviceip = '%s', qs_port = %d, qs_eventtime = sysdate where qs_repeaterid = %d and qs_deviceid = %d",
+         szClientIp, nClientPort, nRepeaterId, nDeviceId);
+    PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
+	if(ExecuteSQL(szSql) != NORMAL)
+	{
+		PrintErrorLog(DBG_HERE, "执行SQL语句失败[%s][%s]\n",
+			szSql, GetSQLErrorMessage());
+        return EXCEPTION;
+	}
+	CommitTransaction();
+	if(GetAffectedRows() <= 0)
+	{     
+    	snprintf(szSql, sizeof(szSql), "insert into ne_deviceip (qs_repeaterid,qs_deviceid, qs_deviceip, qs_port, qs_eventtime) values (%d, %d, '%s', %d, sysdate)",
+    	     nRepeaterId, nDeviceId, szClientIp, nClientPort);
+    	PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
+		if(ExecuteSQL(szSql) != NORMAL)
+		{
+			PrintErrorLog(DBG_HERE, "执行SQL语句失败[%s][%s]\n",
+				szSql, GetSQLErrorMessage());
+    	    return EXCEPTION;
+		}
+	}
+	return NORMAL; 
+}
+
+/* 
+ * 处理GRRU上报交易 
+ */
+RESULT ProcessGrruData(INT nSock, PSTR pszCaReqBuffer, INT nLen, struct sockaddr *pstruClientAddr, INT nAddrLen)
+{
+	STR szReqBuffer[MAX_BUFFER_LEN];
+	STR szResqBuffer[MAX_BUFFER_LEN];
+	INT nReqLen, i,  nRespLen;
+	DECODE_OUT	Decodeout;
+	OBJECTSTRU struObject[1000];
+	BYTEARRAY struPack;
+	
+	int nStart=-1;
+	int nEnd=-1;
+	int index = 0;
+	for(index=0; index<nLen; index++){
+		if(pszCaReqBuffer[index] == 0x7E){
+			nStart = index;
+			break;
+		}
+	}
+	if (nStart<0)
+	{
+		PrintErrorLog(DBG_HERE,"没开始分割字符,报文非法!!!!!!\n");
+		return EXCEPTION;
+	}
+	for(index=nStart+1; index<nLen;index++){
+		if(pszCaReqBuffer[index] == 0x7E){
+			nEnd = index;
+			break;
+		}
+	}
+
+	if (nEnd<0)
+	{
+		PrintErrorLog(DBG_HERE,"没结束分割字符,报文非法!!!!!!\n");
+		return EXCEPTION;
+	}
+	nReqLen = nEnd - nStart +1;
+   	bufclr(szReqBuffer);
+   	memcpy(szReqBuffer, pszCaReqBuffer+nStart, nReqLen);
+   	
+	struPack.pPack = szReqBuffer;
+	struPack.Len = nReqLen;
+	
+	if (Decode_2G(M2G_TCPIP, &struPack, &Decodeout, struObject) != NORMAL)
+    {
+    	PrintErrorLog(DBG_HERE, "解析设备内容错误\n");
+		return EXCEPTION; 
+    }
+	
+    PrintDebugLog(DBG_HERE, "解析2G协议成功,协议类型[%02d],命令标识[%d],错误代码[%d],站点编号[%d],设备编号[%d],网络标识[%d],对象数[%d]\n",
+        Decodeout.NPLayer.APID,  Decodeout.MAPLayer.CommandFalg, Decodeout.APLayer.ErrorCode, 
+        Decodeout.NPLayer.structRepeater.RepeaterId, Decodeout.NPLayer.structRepeater.DeviceId,
+        Decodeout.NPLayer.NetFlag, Decodeout.MAPLayer.ObjCount);
+    
+    
+       
+	//判断上报信息是否请求设置命令 2009.5.31增加
+	INT nCommUpType=0;
+	
+	int nUpQB=Decodeout.NPLayer.NetFlag;
+	int nObjCount=0; //回复报文为0
+		
+	for(i=0; i< Decodeout.MAPLayer.ObjCount; i++)
+	{
+		if (struObject[i].MapID == 0x0141)
+		{
+			nCommUpType = struObject[i].OC[0];
+			PrintDebugLog(DBG_HERE,"上报类型[%X]\n", nCommUpType);
+			break;
+		}
+	}
+	if(Decodeout.MAPLayer.CommandFalg == 1)
+	{
+		memset(szResqBuffer, 0, sizeof(szResqBuffer));
+	    struPack.pPack = szResqBuffer;
+	    struPack.Len = 0;
+		if (Decodeout.NPLayer.APID == 0x03)
+		{
+			if (Encode_Das(M2G_TCPIP, RELAPSECOMMAND, nUpQB, &Decodeout.NPLayer.structRepeater, struObject, nObjCount, &struPack) != NORMAL)
+		    {
+		        PrintErrorLog(DBG_HERE, "回复主动上报打包错误\n");
+			    return EXCEPTION; 
+		    }
+		}
+		else
+		{
+			if (Encode_2G(M2G_TCPIP, RELAPSECOMMAND, nUpQB, &Decodeout.NPLayer.structRepeater, struObject, nObjCount, &struPack) != NORMAL)
+		    {
+		        PrintErrorLog(DBG_HERE, "回复主动上报打包错误\n");
+			    return EXCEPTION; 
+		    }
+		}
+	    //保持应答长度
+	    nRespLen = struPack.Len;
+	    
+	 	/*
+	 	 * 发送应答给设备
+	 	 */
+	    if(SendUdp(nSock, szResqBuffer, nRespLen, 10, pstruClientAddr, nAddrLen) < 0)
+	    {
+	    	//收发分开情况 2013.1.25
+	    	
+	    	//if (ClientSendUdp(szClientIp, nClientPort, szResqBuffer, nRespLen) < 0)
+			{
+	    		PrintErrorLog(DBG_HERE, "返回设备应答报文错误!\n");
+	    		//return EXCEPTION;
+	    	}
+	    }
+   		PrintHexDebugLog("返回设备应答报文", szResqBuffer, nRespLen);
+	    
+	}
+	
+	{
+		//保留客户端ip地址
+		SaveDeviceIp(Decodeout.NPLayer.structRepeater.RepeaterId, Decodeout.NPLayer.structRepeater.DeviceId);
+			
+		bufclr(szReqBuffer);
+   		memcpy(szReqBuffer, pszCaReqBuffer+nStart, nReqLen);
+		struPack.pPack = szReqBuffer;
+		struPack.Len = nReqLen;
+		//先进行转义处理并去掉STX和ETX
+		if(!AscEsc(&struPack))
+		{
+		    PrintErrorLog(DBG_HERE,"转义错误[%s]\n",struPack.pPack);
+			return -1;
+		}
+		/*
+		 * 发送到GPRSSERV处理上报交易
+		 */	
+		ExchDataGprsSvr(szReqBuffer);
+
+    }
+    
+	return NORMAL;
+}
+
+
+/* 
+ * GRRU服务请求处理 
+ */
+RESULT GrruReqWork(INT nSock, PVOID pArg)
+{
+	STR szCaReqBuffer[MAX_BUFFER_LEN];		/* 渠道请求通讯报文 */
+	INT nRecvLen;
+	struct sockaddr_in struClientAddr;
+	INT nAddrLen;
+		
+	{
+	    /* 
+	     * 接收设备请求报文 
+	     */
+	    memset(szCaReqBuffer, 0, sizeof(szCaReqBuffer));
+	    nRecvLen = RecvUdp(nSock, szCaReqBuffer, sizeof(szCaReqBuffer)-1, 10, (struct sockaddr *)&struClientAddr, &nAddrLen);
+	    if (nRecvLen < 0)
+	    {
+	    	PrintErrorLog(DBG_HERE, "接收设备请求报文失败\n");
+	    	return EXCEPTION;
+	    }
+	    else if (nRecvLen == 0)
+	    {
+	        return NORMAL;
+	    }
+        
+    	memset(szClientIp, 0, sizeof(szClientIp));
+    	inet_ntop(AF_INET, &struClientAddr.sin_addr, szClientIp, sizeof(szClientIp));
+    
+		PrintDebugLog(DBG_HERE, "接收设备[%s][%d]连接\n", szClientIp,  ntohs(struClientAddr.sin_port));    
+	    PrintHexDebugLog("接收请求报文",  szCaReqBuffer, nRecvLen);
+	    
+	   	
+	    /* 
+	     * 回复设备应答，发送上报报文到GPRSSERV处理 
+	     */
+	    if (ProcessGrruData(nSock, szCaReqBuffer, nRecvLen, (struct sockaddr *)&struClientAddr, nAddrLen)!=NORMAL)
+	    {
+	    	PrintErrorLog(DBG_HERE, "处理报文失败\n");
+	    	return EXCEPTION;
+	    }
+	    	   
+	    
+	}
+	
+	return NORMAL;	
+
+}
+
+/*	
+ * 主函数
+ */
+RESULT main(INT argc, PSTR *argv)
+{
+	POOLSVRSTRU struPoolSvr;
+	STR szService[MAX_STR_LEN];
+	STR szDbName[MAX_STR_LEN];
+	STR szUser[MAX_STR_LEN];
+	STR szPwd[MAX_STR_LEN];
+	STR szTemp[MAX_STR_LEN];
+	
+	if(argc != 2)
+	{	
+		Usage(argv[0]);
+		return NORMAL;
+	}
+	
+	if(strcmp(argv[1], "stop") == 0)
+	{
+		StopPrg(argv[0]);
+		return NORMAL;
+	}
+	else if(strcmp(argv[1], "-h") == 0)
+	{
+		Usage(argv[0]);
+		return NORMAL;
+	}
+	fprintf(stderr, "\tWelcome to use the network management system(grrurecv)\n");
+	fflush(stderr);
+
+	if(TestPrgStat(argv[0]) == NORMAL)
+	{
+		fprintf(stderr, "%s Has been launched or are in service\n", \
+			argv[0]);
+		return EXCEPTION;
+	}
+	
+	if(DaemonStart() == EXCEPTION)
+	{
+		PrintErrorLog(DBG_HERE,"主函数调用 DaemonStart 进入守护状态错误!\n");
+		CloseDatabase();		
+		return EXCEPTION;
+	}
+	
+	if(CreateIdFile(argv[0]) == EXCEPTION)
+	{
+		PrintErrorLog(DBG_HERE,"主函数调用 CreateIdFile 错误!\n");
+		CloseDatabase();		
+		return EXCEPTION;
+    }
+    
+    if(GetDatabaseArg(szService, szDbName, szUser, szPwd) != NORMAL)
+	{
+		strcpy(szService, "omc");
+		strcpy(szDbName, "omc");
+		strcpy(szUser, "omc");
+		strcpy(szPwd, "omc");
+	}
+		
+	if(OpenDatabase(szService, szDbName, szUser, szPwd) != NORMAL)
+	{
+		PrintErrorLog(DBG_HERE, "打开数据库错误 [%s]!\n", \
+			GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	
+    CloseDatabase();
+	
+     if (GetCfgItem("gprsserv.cfg","GPRSSERV","ListenPort",szTemp) != NORMAL)
+        return EXCEPTION;
+    nGprsPort=atoi(szTemp);
+    	
+	STR szArgName[100];
+	INT i;
+	memset(&struPoolSvr,0,sizeof(struPoolSvr));
+	for(i=0;i<10;i++)
+	{
+		sprintf(szArgName,"ListenPort%d",i+1);
+		if (GetCfgItem("grrurecv.cfg","GRRURECV", szArgName,szTemp) != NORMAL)
+		{
+			if(i==0)
+			{
+				PrintErrorLog(DBG_HERE,"配置监听端口错误\n");
+				return EXCEPTION;
+			}
+			break;
+		}
+		struPoolSvr.nListenPort[i]=atoi(szTemp);
+		nClientPort = atoi(szTemp);
+	}
+	if(i<MAX_LISTEN_PORT)
+		struPoolSvr.nListenPort[i]=-1;
+	
+	
+	SetUdpPoolMinNum(2);
+	if (GetCfgItem("grrurecv.cfg","GRRURECV","MaxProcesses",szTemp) != NORMAL)
+        return EXCEPTION;
+	SetUdpPoolMaxNum(atoi(szTemp));
+	
+	fprintf(stderr,"complete!\nThe program started\n");
+	fflush(stderr);
+	    	
+    struPoolSvr.funcPoolStart = StartPoolChildPro;
+    struPoolSvr.pPoolStartArg = NULL;
+    struPoolSvr.funcPoolWork = GrruReqWork;
+    struPoolSvr.pPoolWorkArg = NULL;
+    struPoolSvr.funcPoolEnd = EndPoolChildPro;
+    struPoolSvr.pPoolEndArg = NULL;
+    struPoolSvr.funcPoolFinish = NULL;
+    struPoolSvr.pPoolFinishArg = NULL;
+	
+	StartUdpPool(&struPoolSvr);	
+
+	return NORMAL;
+}
