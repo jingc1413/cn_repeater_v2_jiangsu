@@ -2938,11 +2938,10 @@ RESULT SaveToMaintainLog(PSTR pszStyle, PSTR pszMemo, SENDPACKAGE *pstruSendInfo
 	{
 		if(GetDbSequence(&nMaintainLogId, "SEQ_MAINTAINLOG")!=NORMAL)
 		{
-			PrintErrorLog(DBG_HERE,"获取查询设置流水号错误\n");
+			PrintErrorLog(DBG_HERE, "获取查询设置流水号错误\n");
 			return EXCEPTION;
 		}
 	}
-	
 	pstruSendInfo->nMaintainLogId = nMaintainLogId;
     memset(szSql, 0, sizeof(szSql));
     snprintf(szSql, sizeof(szSql), 

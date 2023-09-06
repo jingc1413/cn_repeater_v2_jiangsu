@@ -869,8 +869,7 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		 }
 		 else if (nCommUpType == 0x07) //心跳上报
 		 {
-		   
-		    SaveToMaintainLog("心跳上报", "",  &struSendPackage);
+		    //SaveToMaintainLog("心跳上报", "",  &struSendPackage);
 		 }
 		 else if (nCommUpType == 0x08) //远程升级结果上报
 		 {
@@ -1818,8 +1817,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 		}
 		else if (nCommUpType == 0x07) //心跳上报
 		{
-		   
-		    SaveToMaintainLog("心跳上报", "",  &struSendPackage);
+		    //SaveToMaintainLog("心跳上报", "",  &struSendPackage);
 		}
 		else if (nCommUpType == 0x08) //远程升级结果上报
 		{
