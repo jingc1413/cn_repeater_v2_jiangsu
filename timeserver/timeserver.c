@@ -1141,7 +1141,7 @@ RESULT ProcessAlarmTransfer()
             strcpy(struYiYangData.szAlarmLevel,  GetTableFieldValue(&struCursor, "alg_LevelName")); //告警级别
             strcpy(struYiYangData.szAlarmType, "无线告警");  //告警类型：无线告警
             
-            sprintf(struYiYangData.szAlarmLocation, "%08X", atoi(GetTableFieldValue(&struCursor, "ne_RepeaterId"))); //  告警定位：站点编号,设备编号（以逗号分隔，站点编号为8位16进制数，设备编号为2位16进制数）
+            sprintf(struYiYangData.szAlarmLocation, "%08X", atol(GetTableFieldValue(&struCursor, "ne_RepeaterId"))); //  告警定位：站点编号,设备编号（以逗号分隔，站点编号为8位16进制数，设备编号为2位16进制数）
             sprintf(struYiYangData.szAlarmDeviceId, "%02X", atoi(GetTableFieldValue(&struCursor, "ne_DeviceId")));
             strcpy(struYiYangData.szAlarmTelnum,  GetTableFieldValue(&struCursor, "ne_NeTelNum")); 
             
@@ -1298,7 +1298,7 @@ RESULT ProcessAlarmTransfer()
             strcpy(struYiYangData.szAlarmLevel,  GetTableFieldValue(&struCursor, "alg_LevelName")); //告警级别
             strcpy(struYiYangData.szAlarmType, "无线告警");  //告警类型：无线告警
             
-            sprintf(struYiYangData.szAlarmLocation, "%08X", atoi(GetTableFieldValue(&struCursor, "ne_RepeaterId"))); //  告警定位：站点编号,设备编号（以逗号分隔，站点编号为8位16进制数，设备编号为2位16进制数）
+            sprintf(struYiYangData.szAlarmLocation, "%08X", atol(GetTableFieldValue(&struCursor, "ne_RepeaterId"))); //  告警定位：站点编号,设备编号（以逗号分隔，站点编号为8位16进制数，设备编号为2位16进制数）
             sprintf(struYiYangData.szAlarmDeviceId, "%02X", atoi(GetTableFieldValue(&struCursor, "ne_DeviceId")));
             strcpy(struYiYangData.szAlarmTelnum,  GetTableFieldValue(&struCursor, "ne_NeTelNum")); 
             
@@ -1478,7 +1478,8 @@ RESULT ProcessAlarmTransfer()
 
 RESULT ClearRedisEleqrylog()
 {
-	INT nQB, j, nRepeaterId, nDeviceId;
+	UINT nRepeaterId = 0;
+	INT nQB, j, nDeviceId;
 	char szMessage[8192], szBeginTime[100], szFieldKey[100];
 	redisReply *reply, *reply2, *reply3;
 	cJSON* cjson_root = NULL;
@@ -1535,8 +1536,8 @@ RESULT ClearRedisEleqrylog()
 				
 				if ((int)time(NULL) > (int)MakeITimeFromLastTime(szBeginTime)+43200)
 				{
-		        	reply2 = redisCommand(redisconn,"HDEL man_eleqrylog %d_%d_%d", nRepeaterId, nDeviceId, nQB);
-				    PrintDebugLog(DBG_HERE, "HDEL man_eleqrylog: %d_%d_%d, %s\n", nRepeaterId, nDeviceId, nQB, szBeginTime);
+		        	reply2 = redisCommand(redisconn,"HDEL man_eleqrylog %u_%d_%d", nRepeaterId, nDeviceId, nQB);
+				    PrintDebugLog(DBG_HERE, "HDEL man_eleqrylog: %u_%d_%d, %s\n", nRepeaterId, nDeviceId, nQB, szBeginTime);
 				    freeReplyObject(reply2);
 		        }
 				cJSON_Delete(cjson_root);
@@ -1636,7 +1637,7 @@ RESULT ProcRedisHeartBeat()
 		    if (reply->type == REDIS_REPLY_ARRAY && reply->elements==2) {
 		    	nTimes++;
 		        //PrintDebugLog(DBG_HERE, "RPOP [%s]\n",  reply->element[1]->str);
-			    sprintf(szRepeaterIds, "%s%d,", szRepeaterIds, atoi(reply->element[1]->str));
+			    sprintf(szRepeaterIds, "%s%u,", szRepeaterIds, atoi(reply->element[1]->str));
 		    }
 		    freeReplyObject(reply);
 		}

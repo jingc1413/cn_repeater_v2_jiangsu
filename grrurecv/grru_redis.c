@@ -184,9 +184,9 @@ RESULT RedisHsetAndPush(PXMLSTRU  pstruXml, int nType)
 	
     if (nType==1)
     { 
-    	reply = redisCommand(redisconn,"LPUSH %d_%d %s", atol(DemandStrInXmlExt(pstruXml, "<omc>/<Õ¾µã±àºÅ>")),
+    	reply = redisCommand(redisconn,"LPUSH %u_%d %s", atol(DemandStrInXmlExt(pstruXml, "<omc>/<Õ¾µã±àºÅ>")),
     		atoi(DemandStrInXmlExt(pstruXml, "<omc>/<Éè±¸±àºÅ>")),  pMessageBoby);
-    	PrintDebugLog(DBG_HERE, "LPUSH %d_%d %s", atol(DemandStrInXmlExt(pstruXml, "<omc>/<Õ¾µã±àºÅ>")),
+    	PrintDebugLog(DBG_HERE, "LPUSH %u_%d %s", atol(DemandStrInXmlExt(pstruXml, "<omc>/<Õ¾µã±àºÅ>")),
     		atoi(DemandStrInXmlExt(pstruXml, "<omc>/<Éè±¸±àºÅ>")),  pMessageBoby);
     }
     else
@@ -219,16 +219,16 @@ RESULT PushElementParamQueue(int nTaskLogId, PSTR pszEleParamSQL)
 	return NORMAL;
 }
 
-RESULT PushGprsQueue(int nRepeaterId, int nDeviceId, PSTR pszMsgCont)
+RESULT PushGprsQueue(unsigned int nRepeaterId, int nDeviceId, PSTR pszMsgCont)
 {
 	redisReply *reply;
 	
-	reply = redisCommand(redisconn,"LPUSH %d_%d %s", nRepeaterId,nDeviceId,  pszMsgCont);
+	reply = redisCommand(redisconn,"LPUSH %u_%d %s", nRepeaterId,nDeviceId,  pszMsgCont);
 	if (reply == NULL || redisconn->err) {   //10.25
 		PrintErrorLog(DBG_HERE, "Redis LPUSH EleParamQueue error: %s\n", redisconn->errstr);
 		return -1;
 	}
-    PrintDebugLog(DBG_HERE, "LPUSH %d_%d \n[%s]\n", nRepeaterId, nDeviceId,  pszMsgCont);
+    PrintDebugLog(DBG_HERE, "LPUSH %u_%d \n[%s]\n", nRepeaterId, nDeviceId,  pszMsgCont);
     freeReplyObject(reply);
     
 	return NORMAL;

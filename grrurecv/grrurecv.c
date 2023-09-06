@@ -18,7 +18,7 @@ static int nClientPort;
 static int nGprsPort;
 static int nGprsPort_heartbeat = 8804;
 static int nApplPort;
-static int nRepeaterId;
+static unsigned int nRepeaterId;
 static int nDeviceId;
 static int nWuXian=0;
 static int nNewSock=0;
@@ -324,7 +324,7 @@ BOOL AscEsc(BYTEARRAY *Pack)
 /*
  * 同GPRSSERV程序通信，等同GPRSSEND
  */
-RESULT ExchDataGprsSvr(PSTR pszRespBuffer, int nRepeaterId, int is_heartbeat)
+RESULT ExchDataGprsSvr(PSTR pszRespBuffer, unsigned int nRepeaterId, int is_heartbeat)
 {
     int fd;
 	STR szBuffer[MAX_BUFFER_LEN];
@@ -371,7 +371,7 @@ RESULT ExchDataGprsSvr(PSTR pszRespBuffer, int nRepeaterId, int is_heartbeat)
         }
 		memset(szBuffer, 0, sizeof(szBuffer));
 		sprintf(szBuffer, "%s", pszRespBuffer);
-        PrintTransLog(DBG_HERE, "Send to gprsserv [%d]: %s\n", nRepeaterId, pszRespBuffer);
+        PrintTransLog(DBG_HERE, "Send to gprsserv [%u]: %s\n", nRepeaterId, pszRespBuffer);
         if(SendSocketNoSync(fd, szBuffer, strlen(szBuffer), 60) < 0)
         {
             PrintErrorLog(DBG_HERE, "Failed to send msg to [127.0.0.1][%d]%s\n", nGprsPort, pszRespBuffer);
@@ -524,7 +524,7 @@ RESULT ClientSendUdpR(PCSTR pszIpAddr,UINT nPort,PSTR pszBuffer,INT nSendBufferL
 }
 
 /* update ne_element */
-RESULT UpdateNeElement(INT nRepeaterId, INT nDeviceId)
+RESULT UpdateNeElement(UINT nRepeaterId, INT nDeviceId)
 {
 	char szSql[MAX_BUFFER_LEN];
 
@@ -532,7 +532,7 @@ RESULT UpdateNeElement(INT nRepeaterId, INT nDeviceId)
 		return EXCEPTION;
 
 	memset(szSql, 0, sizeof(szSql));
-	snprintf(szSql, sizeof(szSql), "update ne_element set ne_deviceip='%s', ne_deviceport=%d where ne_repeaterid = %d ",
+	snprintf(szSql, sizeof(szSql), "update ne_element set ne_deviceip='%s', ne_deviceport=%d where ne_repeaterid = %u ",
 			szClientIp, nClientPort, nRepeaterId);
 	PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
 	if(ExecuteSQL(szSql) != NORMAL)
@@ -614,10 +614,10 @@ RESULT HmSetDeviceIp(UINT nRepeaterId, INT nDeviceId)
 	if (strcmp(szClientIp, "0.0.0.0") == 0)
 		return EXCEPTION;
 	
-	reply = redisCommand(redisconn,"HSET ne_deviceip %d_%d {\"qs_deviceip\":\"%s\",\"qs_port\":%d,\"qs_eventtime\":\"%s\"}", nRepeaterId, nDeviceId,
+	reply = redisCommand(redisconn,"HSET ne_deviceip %u_%d {\"qs_deviceip\":\"%s\",\"qs_port\":%d,\"qs_eventtime\":\"%s\"}", nRepeaterId, nDeviceId,
   			szClientIp, nClientPort, GetSysDateTime());
   			
-	PrintDebugLog(DBG_HERE, "HSET ne_deviceip: %d_%d {\"qs_deviceip\":\"%s\",\"qs_port\":%d,\"qs_eventtime\":\"%s\"}\n", nRepeaterId, nDeviceId,
+	PrintDebugLog(DBG_HERE, "HSET ne_deviceip: %u_%d {\"qs_deviceip\":\"%s\",\"qs_port\":%d,\"qs_eventtime\":\"%s\"}\n", nRepeaterId, nDeviceId,
   			szClientIp, nClientPort, GetSysDateTime());
 	freeReplyObject(reply);
 		
@@ -665,7 +665,7 @@ RESULT UpdateGprsQueue(int nId, PSTR pszMsgStat)
 	return NORMAL; 
 }
 
-RESULT GetNeInfo(int nRepeaterId, int nDeviceId)
+RESULT GetNeInfo(UINT nRepeaterId, int nDeviceId)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
@@ -684,7 +684,7 @@ RESULT GetNeInfo(int nRepeaterId, int nDeviceId)
 	
 	memset(szSql, 0, sizeof(szSql));
 	sprintf(szSql, "select ne_NeId, ne_deviceip,ne_deviceport from ne_Element where ne_RepeaterId = :v_0 and ne_DeviceId = :v_1 ");
-	PrintDebugLog(DBG_HERE, "执行SQL语句[%s][%d][%d]\n", szSql,nRepeaterId,  nDeviceId);
+	PrintDebugLog(DBG_HERE, "执行SQL语句[%s][%u][%d]\n", szSql, nRepeaterId,  nDeviceId);
 	if(BindSelectTableRecord(szSql, &struCursor, &struBindVar) != NORMAL)
 	{
 		PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n", szSql, GetSQLErrorMessage());
@@ -693,7 +693,7 @@ RESULT GetNeInfo(int nRepeaterId, int nDeviceId)
 	if(FetchCursor(&struCursor) != NORMAL)
 	{
 	    FreeCursor(&struCursor);
-    	PrintErrorLog(DBG_HERE, "执行SQL语句[%s][%d][%d]没有找到记录\n", szSql, nRepeaterId,  nDeviceId);
+    	PrintErrorLog(DBG_HERE, "执行SQL语句[%s][%u][%d]没有找到记录\n", szSql, nRepeaterId,  nDeviceId);
 	    return EXCEPTION;
 	}
 	strcpy(szDeviceIp, GetTableFieldValue(&struCursor, "ne_deviceip"));
@@ -750,7 +750,7 @@ static time_t MakeITimeFromLastTime(PSTR pszLastTime)
 	return nTime;
 }
 
-RESULT ProcessRedisQueue(int nSock, int nRepeaterId, int nDeviceId, struct sockaddr *pstruClientAddr, INT nAddrLen)
+RESULT ProcessRedisQueue(int nSock, UINT nRepeaterId, int nDeviceId, struct sockaddr *pstruClientAddr, INT nAddrLen)
 {
 	STR szDataBuffer[MAX_BUFFER_LEN];
 	char szMessage[MAX_BUFFER_LEN];
@@ -767,7 +767,7 @@ RESULT ProcessRedisQueue(int nSock, int nRepeaterId, int nDeviceId, struct socka
 	
 	//while(TRUE)
 	{
-		reply = redisCommand(redisconn,"RPOP Queue%d", nRepeaterId);
+		reply = redisCommand(redisconn,"RPOP Queue%u", nRepeaterId);
 	    if (reply == NULL || redisconn->err) {   //10.25
 			PrintErrorLog(DBG_HERE, "Redis RPOP GprsQueue error: %s\n", redisconn->errstr);
 			return -1;//break;
@@ -776,13 +776,13 @@ RESULT ProcessRedisQueue(int nSock, int nRepeaterId, int nDeviceId, struct socka
 		    if(reply->type == REDIS_REPLY_NIL){
 		    	nowtime = time(NULL);
 				if (nowtime - lasttime >= 60){
-					PrintDebugLog(DBG_HERE, "Redis RPOP Queue%d_%d is Null, No Task\n", nRepeaterId, nDeviceId);
+					PrintDebugLog(DBG_HERE, "Redis RPOP Queue%u_%d is Null, No Task\n", nRepeaterId, nDeviceId);
 					lasttime = nowtime;
 				}
 				freeReplyObject(reply);
 
 		    }else{
-		    	PrintErrorLog(DBG_HERE, "Redis RPOP Queue%d_%d Error Type: %d, %s\n", nRepeaterId, nDeviceId, reply->type, reply->str);
+		    	PrintErrorLog(DBG_HERE, "Redis RPOP Queue%u_%d Error Type: %d, %s\n", nRepeaterId, nDeviceId, reply->type, reply->str);
 		    	freeReplyObject(reply);
 		    	FreeRedisConn();
 			    sleep(1);
@@ -828,9 +828,9 @@ RESULT ProcessRedisQueue(int nSock, int nRepeaterId, int nDeviceId, struct socka
 			cJSON_Delete(cjson_root);
    						
 			
-			PrintDebugLog(DBG_HERE, "send msg to device[%s][Queue%d_%d][%d][%s]\n", szDeviceIp,nRepeaterId, nDeviceId, nDcsId, szDataBuffer);
+			PrintDebugLog(DBG_HERE, "send msg to device[%s][Queue%u_%d][%d][%s]\n", szDeviceIp, nRepeaterId, nDeviceId, nDcsId, szDataBuffer);
 			
-			PrintTransLog(DBG_HERE, "send msg to device[Queue%d_%d][%d][%s]\n",  nRepeaterId, nDeviceId, nDcsId, szDataBuffer);
+			PrintTransLog(DBG_HERE, "send msg to device[Queue%u_%d][%d][%s]\n",  nRepeaterId, nDeviceId, nDcsId, szDataBuffer);
 			
 			if ((int)time(NULL) - (int)MakeITimeFromLastTime(szEventTime)>43200) 
 				return -1;//continue;
@@ -845,7 +845,7 @@ RESULT ProcessRedisQueue(int nSock, int nRepeaterId, int nDeviceId, struct socka
 			}
 			if(SendUdp(nSock, szDataBuffer, struPack.Len, 10, pstruClientAddr, nAddrLen) < 0)
 		    {
-		    	PrintErrorLog(DBG_HERE, "发送查询设置请求报文错误[%d][%d]\n", nRepeaterId, nDeviceId);
+		    	PrintErrorLog(DBG_HERE, "发送查询设置请求报文错误[%u][%d]\n", nRepeaterId, nDeviceId);
 		    	return EXCEPTION;
 		    }
 		    /*
@@ -880,7 +880,7 @@ RESULT ProcessRedisQueue(int nSock, int nRepeaterId, int nDeviceId, struct socka
 	return NORMAL;
 }
 
-RESULT ProcessGprsQueue(int nSock, int nRepeaterId, int nDeviceId, struct sockaddr *pstruClientAddr, INT nAddrLen)
+RESULT ProcessGprsQueue(int nSock, UINT nRepeaterId, int nDeviceId, struct sockaddr *pstruClientAddr, INT nAddrLen)
 {
     STR szSql[MAX_SQL_LEN];
 	CURSORSTRU struCursor;
@@ -896,11 +896,11 @@ RESULT ProcessGprsQueue(int nSock, int nRepeaterId, int nDeviceId, struct sockad
 		memset(szSql, 0, sizeof(szSql));
 		if (strcmp(getenv("DATABASE"), "mysql") == 0)
 			snprintf(szSql,sizeof(szSql),"select qs_id,  qs_ip, qs_port, qs_telephonenum, qs_content, qs_retrytimes  from ne_gprsqueue where "
-		       "qs_msgstat='%s' and qs_repeaterid= %d and qs_lasttime<'%s%s' limit %d",
-				OMC_NOTSND_MSGSTAT, nRepeaterId,  GetSystemDate(),GetSystemTime(), 50);
+		       "qs_msgstat='%s' and qs_repeaterid= %u and qs_lasttime<'%s%s' limit %d",
+				OMC_NOTSND_MSGSTAT, nRepeaterId,  GetSystemDate(), GetSystemTime(), 50);
 		else
 			snprintf(szSql,sizeof(szSql),"select qs_id,  qs_ip, qs_port, qs_telephonenum, qs_content, qs_retrytimes  from ne_gprsqueue where "
-		       "qs_msgstat='%s' and qs_repeaterid= %d and qs_lasttime<'%s%s' and rownum <=%d",
+		       "qs_msgstat='%s' and qs_repeaterid= %u and qs_lasttime<'%s%s' and rownum <=%d",
 				OMC_NOTSND_MSGSTAT, nRepeaterId,  GetSystemDate(),GetSystemTime(), 50);
 		//PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
 		if(SelectTableRecord(szSql,&struCursor) != NORMAL)
@@ -940,7 +940,7 @@ RESULT ProcessGprsQueue(int nSock, int nRepeaterId, int nDeviceId, struct sockad
 			}
 			if(SendUdp(nSock, szDataBuffer, struPack.Len, 10, pstruClientAddr, nAddrLen) < 0)
 		    {
-		    	PrintErrorLog(DBG_HERE, "发送查询设置请求报文错误[%d][%d]\n", nRepeaterId, nDeviceId);
+		    	PrintErrorLog(DBG_HERE, "发送查询设置请求报文错误[%u][%d]\n", nRepeaterId, nDeviceId);
 		    	return EXCEPTION;
 		    }
 		    memset(szDataBuffer, 0, sizeof(szDataBuffer));
@@ -948,7 +948,7 @@ RESULT ProcessGprsQueue(int nSock, int nRepeaterId, int nDeviceId, struct sockad
 		    if (nRecvLen < 0)
 		    {
 		    	UpdateGprsQueue(nDcsId, OMC_FAIL_MSGSTAT);
-		    	PrintErrorLog(DBG_HERE, "接收查询设置应答报文失败[%d][%d]\n", nRepeaterId, nDeviceId);
+		    	PrintErrorLog(DBG_HERE, "接收查询设置应答报文失败[%u][%d]\n", nRepeaterId, nDeviceId);
 		    	return EXCEPTION;
 		    }
 					    
@@ -1083,15 +1083,16 @@ RESULT ProcessGrruData(INT nSock, PSTR pszCaReqBuffer, INT nLen, struct sockaddr
 
     	if(SendUdp(nSock, szResqBuffer, nRespLen, 10, pstruClientAddr, nAddrLen) < 0)
         {
-            PrintErrorLog(DBG_HERE, "Failed to response to device %d_%d\n", nRepeaterId, nDeviceId);
+            PrintErrorLog(DBG_HERE, "Failed to response to device %u_%d\n", nRepeaterId, nDeviceId);
         }
-        PrintDebugLog(DBG_HERE, "Send Response to device %d_%d\n", nRepeaterId, nDeviceId);
+        PrintDebugLog(DBG_HERE, "Send Response to device %u_%d\n", nRepeaterId, nDeviceId);
         //PrintHexDebugLog("Send Response",  szResqBuffer, nRespLen);
         
 		if (nWuXian==1 || getenv("WUXIAN")!=NULL)
 			HmSetDeviceIp(nRepeaterId, nDeviceId);
-		else
-        	SaveDeviceIp(nRepeaterId, nDeviceId);
+		//else
+		// 2023-9-5 fix by jingc - update ne_deviceip table
+		SaveDeviceIp(nRepeaterId, nDeviceId);
     }
 
     bufclr(szReqBuffer);

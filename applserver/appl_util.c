@@ -1818,7 +1818,7 @@ PSTR GetAlarmEnabledObjList(int nNeId)
 /* 
  * 根据直放站编号,电话号,设备编号取告警对象列表
  */
-RESULT GetAlarmObjList2(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, int *pNeId, PSTR pszNeName, PSTR pszAlarmObjList)
+RESULT GetAlarmObjList2(UINT nRepeaterId, int nDeviceId, PSTR pszNeTelNum, int *pNeId, PSTR pszNeName, PSTR pszAlarmObjList)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
@@ -1839,7 +1839,7 @@ RESULT GetAlarmObjList2(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, int *p
 	
 	memset(szSql, 0, sizeof(szSql));
 	sprintf(szSql, "select ne_NeId,ne_AlarmObjList,ne_Name from ne_Element where ne_RepeaterId = :v_0 and ne_DeviceId = :v_1 and ne_NeTelNum = :v_2");
-	PrintDebugLog(DBG_HERE, "执行SQL语句[%s][%d][%d][%s]\n", szSql, nRepeaterId, nDeviceId, pszNeTelNum);
+	PrintDebugLog(DBG_HERE, "执行SQL语句[%s][%u][%d][%s]\n", szSql, nRepeaterId, nDeviceId, pszNeTelNum);
 	if(BindSelectTableRecord(szSql, &struCursor, &struBindVar) != NORMAL)
 	{
 		PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n",  szSql, GetSQLErrorMessage());
@@ -1848,7 +1848,7 @@ RESULT GetAlarmObjList2(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, int *p
 	if(FetchCursor(&struCursor) != NORMAL)
 	{
 	    FreeCursor(&struCursor);
-		PrintErrorLog(DBG_HERE, "执行SQL语句[%s][%d][%d][%s]没有找到记录\n", szSql, nRepeaterId, nDeviceId, pszNeTelNum);
+		PrintErrorLog(DBG_HERE, "执行SQL语句[%s][%u][%d][%s]没有找到记录\n", szSql, nRepeaterId, nDeviceId, pszNeTelNum);
 		return EXCEPTION;
 	}
 	strcpy(pszAlarmObjList,  TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmObjList")));
@@ -1861,13 +1861,13 @@ RESULT GetAlarmObjList2(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, int *p
 /* 
  * 根据直放站编号,设备编号取告警对象列表
  */
-RESULT GetAlarmObjList3(int nRepeaterId, int nDeviceId, int *pNeId, PSTR pszNeName, PSTR pszAlarmObjList)
+RESULT GetAlarmObjList3(UINT nRepeaterId, int nDeviceId, int *pNeId, PSTR pszNeName, PSTR pszAlarmObjList)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
 	
 	memset(szSql, 0, sizeof(szSql));
-	sprintf(szSql, "select ne_NeId,ne_AlarmObjList,ne_Name from ne_Element where ne_RepeaterId = %d and ne_DeviceId = %d ",
+	sprintf(szSql, "select ne_NeId,ne_AlarmObjList,ne_Name from ne_Element where ne_RepeaterId = %u and ne_DeviceId = %d ",
 	        nRepeaterId, nDeviceId);
 	PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
@@ -1893,7 +1893,7 @@ RESULT GetAlarmObjList3(int nRepeaterId, int nDeviceId, int *pNeId, PSTR pszNeNa
 /* 
  * 根据直放站编号,电话号,设备编号取告警对象列表
  */
-INT GetNeId(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, BOOL *pIsNewNeId)
+INT GetNeId(UINT nRepeaterId, int nDeviceId, PSTR pszNeTelNum, BOOL *pIsNewNeId)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
@@ -1903,7 +1903,7 @@ INT GetNeId(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, BOOL *pIsNewNeId)
 	memset(szSql, 0, sizeof(szSql));
 	if (strlen(pszNeTelNum) ==0)
 	{
-	    sprintf(szSql, "select ne_NeId from ne_Element where ne_RepeaterId = %d  and ne_DeviceId = %d",
+	    sprintf(szSql, "select ne_NeId from ne_Element where ne_RepeaterId = %u and ne_DeviceId = %d",
 	            nRepeaterId, nDeviceId);
 	    PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 	    if(SelectTableRecord(szSql, &struCursor) != NORMAL)
@@ -1925,7 +1925,7 @@ INT GetNeId(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, BOOL *pIsNewNeId)
 	}
 	else
 	{
-	    sprintf(szSql, "select ne_NeId from ne_Element where ne_RepeaterId = %d and ne_NeTelNum = '%s' and ne_DeviceId = %d",
+	    sprintf(szSql, "select ne_NeId from ne_Element where ne_RepeaterId = %u and ne_NeTelNum = '%s' and ne_DeviceId = %d",
 	            nRepeaterId,  pszNeTelNum, nDeviceId);
 	    PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 	    if(SelectTableRecord(szSql, &struCursor) != NORMAL)
@@ -1938,7 +1938,7 @@ INT GetNeId(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, BOOL *pIsNewNeId)
 	    {
 	        FreeCursor(&struCursor);
 	    	memset(szSql, 0, sizeof(szSql));
-	        sprintf(szSql, "select ne_NeId from ne_Element where ne_RepeaterId = %d  and ne_DeviceId = %d",
+	        sprintf(szSql, "select ne_NeId from ne_Element where ne_RepeaterId = %u  and ne_DeviceId = %d",
 	                nRepeaterId, nDeviceId);
 	        PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 	        if(SelectTableRecord(szSql, &struCursor) != NORMAL)
@@ -1963,14 +1963,14 @@ INT GetNeId(int nRepeaterId, int nDeviceId, PSTR pszNeTelNum, BOOL *pIsNewNeId)
 }
 
 
-BOOL ExistNeId(int nRepeaterId, int nDeviceId)
+BOOL ExistNeId(UINT nRepeaterId, int nDeviceId)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
 	INT nCount;
 	
 	memset(szSql, 0, sizeof(szSql));
-	sprintf(szSql, "select count(ne_NeId) as v_count from ne_Element where NE_REPEATERID = %d and NE_DEVICEID= %d", nRepeaterId, nDeviceId);
+	sprintf(szSql, "select count(ne_NeId) as v_count from ne_Element where NE_REPEATERID = %u and NE_DEVICEID= %d", nRepeaterId, nDeviceId);
 	PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
 	{
@@ -1995,14 +1995,14 @@ BOOL ExistNeId(int nRepeaterId, int nDeviceId)
 }
 
 
-BOOL ExistDasNeId(int nRepeaterId, int nDeviceId, PSTR pszRouteAddr)
+BOOL ExistDasNeId(UINT nRepeaterId, int nDeviceId, PSTR pszRouteAddr)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
 	INT nCount;
 	
 	memset(szSql, 0, sizeof(szSql));
-	sprintf(szSql, "select count(ne_NeId) as v_count from ne_Element where NE_REPEATERID = %d and NE_DEVICEID = %d and NE_ROUTE= '%s'", nRepeaterId, nDeviceId, pszRouteAddr);
+	sprintf(szSql, "select count(ne_NeId) as v_count from ne_Element where NE_REPEATERID = %u and NE_DEVICEID = %d and NE_ROUTE= '%s'", nRepeaterId, nDeviceId, pszRouteAddr);
 	PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
 	{
@@ -2044,14 +2044,14 @@ BOOL ExistDasNeId(int nRepeaterId, int nDeviceId, PSTR pszRouteAddr)
 }
 
 
-BOOL ExistRfidEle(int nRepeaterId, PSTR pszRouteAddr)
+BOOL ExistRfidEle(UINT nRepeaterId, PSTR pszRouteAddr)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
 	INT nCount;
 	
 	memset(szSql, 0, sizeof(szSql));
-	sprintf(szSql, "select count(*) as v_count from ne_Rfid where RFI_REPEATERID = %d and RFI_ROUTE= '%s'", nRepeaterId, pszRouteAddr);
+	sprintf(szSql, "select count(*) as v_count from ne_Rfid where RFI_REPEATERID = %u and RFI_ROUTE= '%s'", nRepeaterId, pszRouteAddr);
 	PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
 	{
@@ -2095,7 +2095,7 @@ RESULT GetNeInfo(SENDPACKAGE *pstruNeInfo)
 	
 	memset(szSql, 0, sizeof(szSql));
 	sprintf(szSql, "select ne_NeId,ne_netelnum,ne_servertelnum,ne_protocoldevicetypeid,ne_ProtocoltypeId, ne_alarmobjlist, ne_areaid from ne_Element where ne_RepeaterId = :v_0 and ne_DeviceId = :v_1");
-	PrintDebugLog(DBG_HERE, "执行SQL语句[%s][%d][%d]\n", szSql,pstruNeInfo->struRepeater.nRepeaterId,  pstruNeInfo->struRepeater.nDeviceId);
+	PrintDebugLog(DBG_HERE, "执行SQL语句[%s][%u][%d]\n", szSql,pstruNeInfo->struRepeater.nRepeaterId,  pstruNeInfo->struRepeater.nDeviceId);
 	if(BindSelectTableRecord(szSql, &struCursor, &struBindVar) != NORMAL)
 	{
 		PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n", szSql, GetSQLErrorMessage());
@@ -2113,7 +2113,7 @@ RESULT GetNeInfo(SENDPACKAGE *pstruNeInfo)
 	if(FetchCursor(&struCursor) != NORMAL)
 	{
 	    FreeCursor(&struCursor);
-    	PrintErrorLog(DBG_HERE, "执行SQL语句[%s][%d][%d]没有找到记录\n", szSql, pstruNeInfo->struRepeater.nRepeaterId,  pstruNeInfo->struRepeater.nDeviceId);
+    	PrintErrorLog(DBG_HERE, "执行SQL语句[%s][%u][%d]没有找到记录\n", szSql, pstruNeInfo->struRepeater.nRepeaterId,  pstruNeInfo->struRepeater.nDeviceId);
 	    return EXCEPTION;
 	}
 	pstruNeInfo->nNeId = atoi(GetTableFieldValue(&struCursor, "ne_NeId"));
@@ -2471,7 +2471,7 @@ RESULT SaveToGprsQueue(PXMLSTRU pstruReqXml)
 	UINT qry_EleQryLogId;		//获取编号
 	char szTemp[20];
 	char szLastTime[20], szTeleNum[20];
-	int nRepeaterId, nDeviceId;
+	//int nRepeaterId, nDeviceId;
 	
 	if (getenv("WUXIAN")!=NULL)
 	{
@@ -2495,8 +2495,8 @@ RESULT SaveToGprsQueue(PXMLSTRU pstruReqXml)
 				return EXCEPTION;
 			}
 		}
-		nRepeaterId=atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<站点编号>"));
-		nDeviceId=atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<设备编号>"));
+		//nRepeaterId=atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<站点编号>"));
+		//nDeviceId=atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<设备编号>"));
 		
 		strcpy(szTeleNum, DemandStrInXmlExt(pstruReqXml, "<omc>/<站点电话>"));
 	   	strcpy(szLastTime, "0");
@@ -2652,7 +2652,7 @@ RESULT SaveToSnmpQueue(PXMLSTRU pstruReqXml)
     
 }
 
-RESULT GetSendPackageInfo(int QB, int RptId, SENDPACKAGE *pstruSendInfo)
+RESULT GetSendPackageInfo(int QB, unsigned int RptId, SENDPACKAGE *pstruSendInfo)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
@@ -2670,7 +2670,7 @@ RESULT GetSendPackageInfo(int QB, int RptId, SENDPACKAGE *pstruSendInfo)
 	
 	memset(szSql, 0, sizeof(szSql));
 	sprintf(szSql, "SELECT QS_ID,QS_PROTOCOLTYPEID,QS_COMMANDCODE, QS_QRYNUMBER,QS_LEVEL, QS_COMMTYPEID, QS_REPEATERID, QS_DEVICEID,QS_TELEPHONENUM, QS_SERVERTELNUM, QS_DEVICETYPEID, QS_OTHERDEVICEID, QS_NEID,QS_TASKID, QS_TASKLOGID FROM NE_MSGQUEUE WHERE QS_NETFLAG = :v_0 AND QS_REPEATERID = :v_1");
-	PrintDebugLog(DBG_HERE, "执行SQL语句[%s][%d][%d]\n", szSql, QB, RptId);
+	PrintDebugLog(DBG_HERE, "执行SQL语句[%s][%d][%u]\n", szSql, QB, RptId);
 	if(BindSelectTableRecord(szSql, &struCursor, &struBindVar) != NORMAL)
 	{
 		PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n", \
@@ -2680,7 +2680,7 @@ RESULT GetSendPackageInfo(int QB, int RptId, SENDPACKAGE *pstruSendInfo)
 	if(FetchCursor(&struCursor) != NORMAL)
 	{
 	    FreeCursor(&struCursor);
-		PrintErrorLog(DBG_HERE, "执行SQL语句[%s][%d][%d]没有找到记录\n", szSql, QB, RptId);
+		PrintErrorLog(DBG_HERE, "执行SQL语句[%s][%d][%u]没有找到记录\n", szSql, QB, RptId);
 		return EXCEPTION;
 	}
 	nMsgSerial = atoi(GetTableFieldValue(&struCursor, "QS_ID"));
@@ -2692,7 +2692,7 @@ RESULT GetSendPackageInfo(int QB, int RptId, SENDPACKAGE *pstruSendInfo)
 	pstruSendInfo->struHead.nRiority = atoi(GetTableFieldValue(&struCursor, "QS_LEVEL"));
 	
 	pstruSendInfo->struRepeater.nCommType = atoi(GetTableFieldValue(&struCursor, "QS_COMMTYPEID"));
-	pstruSendInfo->struRepeater.nRepeaterId = atoi(GetTableFieldValue(&struCursor, "QS_REPEATERID"));
+	pstruSendInfo->struRepeater.nRepeaterId = atol(GetTableFieldValue(&struCursor, "QS_REPEATERID"));
 	pstruSendInfo->struRepeater.nDeviceId = atoi(GetTableFieldValue(&struCursor, "QS_DEVICEID"));
 	strcpy(pstruSendInfo->struRepeater.szTelephoneNum, GetTableFieldValue(&struCursor, "QS_TELEPHONENUM"));
 	
@@ -2725,14 +2725,14 @@ RESULT GetSendPackageInfo(int QB, int RptId, SENDPACKAGE *pstruSendInfo)
 }
 
 
-RESULT GetGprsPackageInfo(int QB, int RptId, SENDPACKAGE *pstruSendInfo)
+RESULT GetGprsPackageInfo(int QB, unsigned int RptId, SENDPACKAGE *pstruSendInfo)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
 	INT nMsgSerial;
 	
 	memset(szSql, 0, sizeof(szSql));
-	sprintf(szSql, "select QS_ID,QS_PROTOCOLTYPEID,QS_COMMANDCODE, QS_QRYNUMBER,QS_LEVEL, QS_COMMTYPEID, QS_REPEATERID, QS_DEVICEID,QS_TELEPHONENUM, QS_SERVERTELNUM, QS_DEVICETYPEID, QS_OTHERDEVICEID, QS_NEID,QS_TASKID, QS_TASKLOGID, QS_IP, QS_PORT from NE_GPRSQUEUE where QS_NETFLAG = %d and QS_REPEATERID = %d",
+	sprintf(szSql, "select QS_ID,QS_PROTOCOLTYPEID,QS_COMMANDCODE, QS_QRYNUMBER,QS_LEVEL, QS_COMMTYPEID, QS_REPEATERID, QS_DEVICEID,QS_TELEPHONENUM, QS_SERVERTELNUM, QS_DEVICETYPEID, QS_OTHERDEVICEID, QS_NEID,QS_TASKID, QS_TASKLOGID, QS_IP, QS_PORT from NE_GPRSQUEUE where QS_NETFLAG = %d and QS_REPEATERID = %u",
 	        QB, RptId);
 	PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
@@ -2818,7 +2818,7 @@ RESULT GetSnmpPackageInfo(int nMsgId, SENDPACKAGE *pstruSendInfo)
 	pstruSendInfo->struHead.nRiority = atoi(GetTableFieldValue(&struCursor, "QS_LEVEL"));
 	
 	pstruSendInfo->struRepeater.nCommType = atoi(GetTableFieldValue(&struCursor, "QS_COMMTYPEID"));
-	pstruSendInfo->struRepeater.nRepeaterId = atoi(GetTableFieldValue(&struCursor, "QS_REPEATERID"));
+	pstruSendInfo->struRepeater.nRepeaterId = atol(GetTableFieldValue(&struCursor, "QS_REPEATERID"));
 	pstruSendInfo->struRepeater.nDeviceId = atoi(GetTableFieldValue(&struCursor, "QS_DEVICEID"));
 	strcpy(pstruSendInfo->struRepeater.szTelephoneNum, GetTableFieldValue(&struCursor, "QS_TELEPHONENUM"));
 	strcpy(pstruSendInfo->struRepeater.szNetCenter, GetTableFieldValue(&struCursor, "QS_SERVERTELNUM"));
@@ -2947,7 +2947,7 @@ RESULT SaveToMaintainLog(PSTR pszStyle, PSTR pszMemo, SENDPACKAGE *pstruSendInfo
     memset(szSql, 0, sizeof(szSql));
     snprintf(szSql, sizeof(szSql), 
        "insert into  man_MaintainLog ( mnt_RepeaterId,mnt_DeviceId,mnt_EventTime,mnt_Style,mnt_SIMCard,mnt_Number,mnt_NeId,mnt_CommTypeId,mnt_CenterTel,mnt_ProtocoltypeId,mnt_Memo) "
-       "values ( %d, %d,to_date('%s','yyyy-mm-dd hh24:mi:ss'),'%s','%s','%s', %d, %d,'%s',%d, '%s') ",
+       "values ( %u, %d,to_date('%s','yyyy-mm-dd hh24:mi:ss'),'%s','%s','%s', %d, %d,'%s',%d, '%s') ",
        //pstruSendInfo->nMaintainLogId,  
        pstruSendInfo->struRepeater.nRepeaterId,
        pstruSendInfo->struRepeater.nDeviceId,
@@ -3027,8 +3027,7 @@ RESULT GetPackInfoFromMainLog(SENDPACKAGE *pstruSendInfo)
 	STR szSql[MAX_SQL_LEN];
 	CURSORSTRU struCursor;
 	
-	sprintf(szSql,"select mnt_simcard, mnt_neid, mnt_centertel from man_maintainlog where mnt_repeaterid = %d and mnt_deviceid = %d and mnt_style = '%s'", 
-	        pstruSendInfo->struRepeater.nRepeaterId, pstruSendInfo->struRepeater.nDeviceId, "GPRS请求开站上报");
+	sprintf(szSql,"select mnt_simcard, mnt_neid, mnt_centertel from man_maintainlog where mnt_repeaterid = %u and mnt_deviceid = %d and mnt_style = '%s'", pstruSendInfo->struRepeater.nRepeaterId, pstruSendInfo->struRepeater.nDeviceId, "GPRS请求开站上报");
 	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
 	{
@@ -3193,12 +3192,12 @@ RESULT SetTaskUsing(int nTaskId)
 	return NORMAL; 
 }
 
-RESULT SaveToDasList(int nRepeaterId, int nDeviceId, PSTR pszRouter, PSTR pszDeviceIp, int nConnStat, int nDeviceTypeId, PSTR pszAddrInfo)
+RESULT SaveToDasList(UINT nRepeaterId, int nDeviceId, PSTR pszRouter, PSTR pszDeviceIp, int nConnStat, int nDeviceTypeId, PSTR pszAddrInfo)
 {
     char szSql[MAX_BUFFER_LEN];
      
     memset(szSql, 0, sizeof(szSql));
-    snprintf(szSql, sizeof(szSql), "insert into ne_daslist (repead_id, device_id, route_addr, ip_addr, conn_stat, device_typeid, addr_info) values (%d, %d, '%s', '%s', %d, %d, '%s')", 
+    snprintf(szSql, sizeof(szSql), "insert into ne_daslist (repead_id, device_id, route_addr, ip_addr, conn_stat, device_typeid, addr_info) values (%u, %d, '%s', '%s', %d, %d, '%s')", 
      nRepeaterId, nDeviceId, pszRouter, pszDeviceIp, nConnStat, nDeviceTypeId, pszAddrInfo);
     PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
 	if(ExecuteSQL(szSql) != NORMAL)
@@ -3211,12 +3210,12 @@ RESULT SaveToDasList(int nRepeaterId, int nDeviceId, PSTR pszRouter, PSTR pszDev
 	return NORMAL; 
 }
 
-RESULT DeleDasList(int nRepeaterId)
+RESULT DeleDasList(UINT nRepeaterId)
 {
     char szSql[MAX_BUFFER_LEN];
      
     memset(szSql, 0, sizeof(szSql));
-    snprintf(szSql, sizeof(szSql), "delete from ne_daslist where repead_id = %d", nRepeaterId);
+    snprintf(szSql, sizeof(szSql), "delete from ne_daslist where repead_id = %u", nRepeaterId);
     PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
 	if(ExecuteSQL(szSql) != NORMAL)
 	{
@@ -3228,12 +3227,12 @@ RESULT DeleDasList(int nRepeaterId)
 	return NORMAL; 
 }
 
-RESULT DeleRfidList(int nRepeaterId, int nDeviceId)
+RESULT DeleRfidList(UINT nRepeaterId, int nDeviceId)
 {
     char szSql[MAX_BUFFER_LEN];
      
     memset(szSql, 0, sizeof(szSql));
-    snprintf(szSql, sizeof(szSql), "delete from ne_rfidlist where repead_id = %d and device_id = %d", nRepeaterId, nDeviceId);
+    snprintf(szSql, sizeof(szSql), "delete from ne_rfidlist where repead_id = %u and device_id = %d", nRepeaterId, nDeviceId);
     PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
 	if(ExecuteSQL(szSql) != NORMAL)
 	{
@@ -3246,12 +3245,12 @@ RESULT DeleRfidList(int nRepeaterId, int nDeviceId)
 }
 
 
-RESULT SaveToRfidList(int nRepeaterId, int nDeviceId, PSTR pszRouter, int nConnStat, int nDeviceTypeId)
+RESULT SaveToRfidList(UINT nRepeaterId, int nDeviceId, PSTR pszRouter, int nConnStat, int nDeviceTypeId)
 {
     char szSql[MAX_BUFFER_LEN];
      
     memset(szSql, 0, sizeof(szSql));
-    snprintf(szSql, sizeof(szSql), "insert into ne_rfidlist (repead_id, device_id, route_addr, conn_stat, device_typeid ) values (%d, %d, '%s', %d, %d)", 
+    snprintf(szSql, sizeof(szSql), "insert into ne_rfidlist (repead_id, device_id, route_addr, conn_stat, device_typeid ) values (%u, %d, '%s', %d, %d)", 
      nRepeaterId, nDeviceId, pszRouter, nConnStat, nDeviceTypeId);
     PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
 	if(ExecuteSQL(szSql) != NORMAL)
@@ -3682,12 +3681,12 @@ RESULT GetMcpIdFromParam(INT nNeId, PSTR pszMapId,PSTR pszMcpId)
 }
 
 
-RESULT GetMapIdFromParam(INT nRepeaterId, PSTR pszMcpId, PSTR pszMapId)
+RESULT GetMapIdFromParam(UINT nRepeaterId, PSTR pszMcpId, PSTR pszMapId)
 {
 	STR szSql[MAX_SQL_LEN];
 	CURSORSTRU struCursor;
 
-	sprintf(szSql, "SELECT epm_ObjId FROM ne_ElementParam a JOIN ne_element b ON a.EPM_NEID = b.NE_NEID WHERE a.epm_mcpid ='%s' AND b.NE_REPEATERID = %d",
+	sprintf(szSql, "SELECT epm_ObjId FROM ne_ElementParam a JOIN ne_element b ON a.EPM_NEID = b.NE_NEID WHERE a.epm_mcpid ='%s' AND b.NE_REPEATERID = %u",
 	  pszMcpId, nRepeaterId);
 	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
@@ -3985,12 +3984,12 @@ BOOL getAgentState(PSTR pszAgentNo)
 
 
 //保存到ne_delivecrc表中
-RESULT SaveToRecordDeliveCrc(INT nRepeaterId, INT nDeviceId, INT nNetFlag, INT nType)
+RESULT SaveToRecordDeliveCrc(UINT nRepeaterId, INT nDeviceId, INT nNetFlag, INT nType)
 {
     char szSql[MAX_BUFFER_LEN];
 
     memset(szSql, 0, sizeof(szSql));
-    snprintf(szSql, sizeof(szSql), "insert into  ne_delivecrc values (%d, %d, %d, %d, sysdate)",
+    snprintf(szSql, sizeof(szSql), "insert into  ne_delivecrc values (%u, %d, %d, %d, sysdate)",
          nRepeaterId, nDeviceId, nNetFlag, nType);
      
     //PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
@@ -4586,7 +4585,7 @@ RESULT SaveToAlarmLog(int nAlarmId, int nNeId, int nAlarmCount)
 /* 
  * 根据直放站编号,电话号,设备编号取告警对象列表
  */
-RESULT GetDeviceIp(int nRepeaterId, int nDeviceId, PSTR pszDeviceIp, int *pPort)
+RESULT GetDeviceIp(UINT nRepeaterId, int nDeviceId, PSTR pszDeviceIp, int *pPort)
 {
     CURSORSTRU struCursor;
 	STR szSql[MAX_SQL_LEN];
@@ -4597,7 +4596,7 @@ RESULT GetDeviceIp(int nRepeaterId, int nDeviceId, PSTR pszDeviceIp, int *pPort)
 	{
 		if (GetRedisDeviceIpInfo(nRepeaterId, nDeviceId, szDeviceIp, &nDevicePort)!= NORMAL)
 		{
-			PrintErrorLog(DBG_HERE, "GetRedisDeviceIpInfo is null, [%d,%d]\n", \
+			PrintErrorLog(DBG_HERE, "GetRedisDeviceIpInfo is null, [%u,%d]\n", \
 						  nRepeaterId, nDeviceId);
 			return EXCEPTION;
 		}
@@ -4607,7 +4606,7 @@ RESULT GetDeviceIp(int nRepeaterId, int nDeviceId, PSTR pszDeviceIp, int *pPort)
 	else
 	{
 		memset(szSql, 0, sizeof(szSql));
-		sprintf(szSql, "select qs_deviceip,qs_port from ne_deviceip where qs_RepeaterId = %d and qs_DeviceId = %d",
+		sprintf(szSql, "select qs_deviceip,qs_port from ne_deviceip where qs_RepeaterId = %u and qs_DeviceId = %d",
 		        nRepeaterId, nDeviceId);
 		PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 		if(SelectTableRecord(szSql, &struCursor) != NORMAL)

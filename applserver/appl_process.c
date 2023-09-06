@@ -302,7 +302,7 @@ static RESULT InitPackageToXml(SENDPACKAGE *pstruSendPackage, PXMLSTRU pstruXml)
 	sprintf(szTemp, "%d", pstruSendPackage->struRepeater.nCommType);
     InsertInXmlExt(pstruXml,"<omc>/<通信方式>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
     
-    sprintf(szTemp, "%d", pstruSendPackage->struRepeater.nRepeaterId);
+    sprintf(szTemp, "%u", pstruSendPackage->struRepeater.nRepeaterId);
 	InsertInXmlExt(pstruXml,"<omc>/<站点编号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
 	
 	sprintf(szTemp, "%d", pstruSendPackage->struRepeater.nDeviceId);
@@ -351,7 +351,7 @@ RESULT SendToApplQrySet(SENDPACKAGE *pstruNeInfo)
 	
 	memset(szTemp, 0, sizeof(szTemp));
 	snprintf(szTemp,  sizeof(szTemp), 
-					"6000|%d|%d|%d|07C5,07C6,07E7|1,1,1|1|%s|127.0.0.1|2|2|49| | |9999|%s|12|%s|0|3|0|0",
+					"6000|%d|%u|%d|07C5,07C6,07E7|1,1,1|1|%s|127.0.0.1|2|2|49| | |9999|%s|12|%s|0|3|0|0",
 			 pstruNeInfo->nNeId,
 			 pstruNeInfo->struRepeater.nRepeaterId,  
 			 pstruNeInfo->struRepeater.nDeviceId,
@@ -462,14 +462,14 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
     }
 
 	
-    PrintDebugLog(DBG_HERE, "解析2G协议成功,协议类型[%02d],命令标识[%d],错误代码[%d],站点编号[%d],设备编号[%X],网络标识[%d],对象数[%d]\n",
+    PrintDebugLog(DBG_HERE, "解析2G协议成功,协议类型[%02d],命令标识[%d],错误代码[%d],站点编号[%u],设备编号[%X],网络标识[%d],对象数[%d]\n",
         Decodeout.NPLayer.APID,  Decodeout.MAPLayer.CommandFalg, Decodeout.APLayer.ErrorCode, 
         Decodeout.NPLayer.structRepeater.RepeaterId, Decodeout.NPLayer.structRepeater.DeviceId,
         Decodeout.NPLayer.NetFlag, Decodeout.MAPLayer.ObjCount);
 	
 	//根据QB+RepeaterId获取QA
 	int QB=Decodeout.NPLayer.NetFlag;//2G协议通讯标示流水号
-	int nRepeaterId=Decodeout.NPLayer.structRepeater.RepeaterId;
+	UINT nRepeaterId=Decodeout.NPLayer.structRepeater.RepeaterId;
 	int nDeviceId = Decodeout.NPLayer.structRepeater.DeviceId;
 	
 	//初始化分解对象
@@ -660,7 +660,7 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		     if (GetAlarmObjList2(nRepeaterId, nDeviceId, pszTelephone, &nNeId, szNeName, szAlarmObjList)!= NORMAL)
 		     {
 		         DeleteXml(pstruXml);
-		         PrintErrorLog(DBG_HERE, "设备号[%d][%d]不存在记录\n", nRepeaterId, nDeviceId);
+		         PrintErrorLog(DBG_HERE, "设备号[%u][%d]不存在记录\n", nRepeaterId, nDeviceId);
 		         return EXCEPTION;
 		     }
 		     InsertInXmlExt(pstruXml,"<omc>/<告警列表>",szAlarmObjList,MODE_AUTOGROW|MODE_UNIQUENAME);
@@ -877,7 +877,7 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		     
 		 	 sprintf(szTemp, "%d", struSendPackage.nNeId);
 		     InsertInXmlExt(pstruXml,"<omc>/<网元编号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
-		     sprintf(szTemp, "%d", struSendPackage.struRepeater.nRepeaterId);
+		     sprintf(szTemp, "%u", struSendPackage.struRepeater.nRepeaterId);
 		     InsertInXmlExt(pstruXml,"<omc>/<设备编号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
 		     sprintf(szTemp, "%d", struSendPackage.struRepeater.nDeviceId);
 		     InsertInXmlExt(pstruXml,"<omc>/<次编号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
@@ -1104,14 +1104,14 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		 	 nMapIdValue=ReadWORD(struObject[0].OC+2+j*2);
 		 	 sprintf(szMapIdValue, "%04X", nMapIdValue);
 		 	 STR szMapListId[29];
-		 	 sprintf(szMapListId, "Ne%d%d", nRepeaterId, nDeviceId);
+		 	 sprintf(szMapListId, "Ne%u%d", nRepeaterId, nDeviceId);
 	         SaveToMapList(szMapListId, szMapIdValue);
 	     }
 	     CommitTransaction();
 
 		 int nTotalQuery = struObject[0].OC[0];
 		 int nNowQuery = struObject[0].OC[1];
-		 PrintDebugLog(DBG_HERE, "站点[%d]总监控参量[%d]当前返回监控参量[%d]\n", nRepeaterId, nTotalQuery, nNowQuery);
+		 PrintDebugLog(DBG_HERE, "站点[%u]总监控参量[%d]当前返回监控参量[%d]\n", nRepeaterId, nTotalQuery, nNowQuery);
 		 if( nTotalQuery > nNowQuery)//表示还需要继续取
 		 {
 		 	 memset(&struObject[0], 0, sizeof(OBJECTSTRU));
@@ -1181,7 +1181,7 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		 }
 		 else
 		 {
-		 	 PrintErrorLog(DBG_HERE, "站点[%d]总监控量[%d]小于当前返回监控参量[%d],异常包!\n",  nRepeaterId, nTotalQuery, nNowQuery);
+		 	 PrintErrorLog(DBG_HERE, "站点[%u]总监控量[%d]小于当前返回监控参量[%d],异常包!\n",  nRepeaterId, nTotalQuery, nNowQuery);
 			 return EXCEPTION; 
 		 }
 
@@ -1202,12 +1202,12 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		 {
 		 	 nMapIdValue=ReadDWORD(struObject[0].OC+2+j*4);
 		 	 sprintf(szMapIdValue, "%08X", nMapIdValue);
-		 	 sprintf(szMapListId, "Ne%d%d", nRepeaterId, nDeviceId);
+		 	 sprintf(szMapListId, "Ne%u%d", nRepeaterId, nDeviceId);
 	         SaveToMapList(szMapListId, szMapIdValue);
 	     }
 	     CommitTransaction();
 	     
-		 PrintDebugLog(DBG_HERE, "站点[%d]总监控参量[%d]当前返回监控参量[%d]\n", nRepeaterId, nTotalQuery, nNowQuery);
+		 PrintDebugLog(DBG_HERE, "站点[%u]总监控参量[%d]当前返回监控参量[%d]\n", nRepeaterId, nTotalQuery, nNowQuery);
 		 if( nTotalQuery > nNowQuery)//表示还需要继续取
 		 {
 		 	 memset(&struObject[0], 0, sizeof(OBJECTSTRU));
@@ -1263,7 +1263,7 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		 }
 		 else
 		 {
-		 	 PrintErrorLog(DBG_HERE, "站点[%d]总监控量[%d]小于当前返回监控参量[%d],异常包!\n",  nRepeaterId, nTotalQuery, nNowQuery);
+		 	 PrintErrorLog(DBG_HERE, "站点[%u]总监控量[%d]小于当前返回监控参量[%d],异常包!\n",  nRepeaterId, nTotalQuery, nNowQuery);
 			 return EXCEPTION; 
 		 }
 
@@ -1297,12 +1297,12 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		 	 nMapIdValue=ReadDWORD(struObject[0].OC+2+j*6+2);
 		 	 sprintf(szMapIdValue, "%08X", nMapIdValue);
 		 	 
-		 	 sprintf(szMapListId, "Ne%d%d", nRepeaterId, nDeviceId);
+		 	 sprintf(szMapListId, "Ne%u%d", nRepeaterId, nDeviceId);
 	         SaveToMap0001List(szMapListId, szMapIdValue, szMap0001Value);
 	     }
 	     CommitTransaction();
 	     
-		 PrintDebugLog(DBG_HERE, "站点[%d]总监控参量[%d]当前返回监控参量[%d]\n", nRepeaterId, nTotalQuery, nNowQuery);
+		 PrintDebugLog(DBG_HERE, "站点[%u]总监控参量[%d]当前返回监控参量[%d]\n", nRepeaterId, nTotalQuery, nNowQuery);
 		 if( nTotalQuery > nNowQuery)//表示还需要继续取
 		 {
 		 	 memset(&struObject[0], 0, sizeof(OBJECTSTRU));
@@ -1358,7 +1358,7 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		 }
 		 else
 		 {
-		 	 PrintErrorLog(DBG_HERE, "站点[%d]总监控量[%d]小于当前返回监控参量[%d],异常包!\n",  nRepeaterId, nTotalQuery, nNowQuery);
+		 	 PrintErrorLog(DBG_HERE, "站点[%u]总监控量[%d]小于当前返回监控参量[%d],异常包!\n",  nRepeaterId, nTotalQuery, nNowQuery);
 			 return EXCEPTION; 
 		 }
 
@@ -1434,13 +1434,13 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
     }
 
 	
-    PrintDebugLog(DBG_HERE, "解析GPRS协议成功,协议类型[%02d],命令标识[%d],错误代码[%d],站点编号[%d],设备编号[%d],网络标识[%d],对象数[%d]\n",
+    PrintDebugLog(DBG_HERE, "解析GPRS协议成功,协议类型[%02d],命令标识[%d],错误代码[%d],站点编号[%u],设备编号[%d],网络标识[%d],对象数[%d]\n",
         Decodeout.NPLayer.APID,  Decodeout.MAPLayer.CommandFalg, Decodeout.APLayer.ErrorCode, 
         Decodeout.NPLayer.structRepeater.RepeaterId, Decodeout.NPLayer.structRepeater.DeviceId,
         Decodeout.NPLayer.NetFlag, Decodeout.MAPLayer.ObjCount);
 	
 	int QB=Decodeout.NPLayer.NetFlag;//2G协议通讯标示流水号
-	int nRepeaterId=Decodeout.NPLayer.structRepeater.RepeaterId;
+	UINT nRepeaterId=Decodeout.NPLayer.structRepeater.RepeaterId;
 	int nDeviceId=Decodeout.NPLayer.structRepeater.DeviceId;
 		
 	//初始化分解对象
@@ -1567,7 +1567,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 		     if (GetAlarmObjList3(nRepeaterId, nDeviceId, &nNeId, szNeName, szAlarmObjList)!= NORMAL)
 		     {
 		         DeleteXml(pstruXml);
-		         PrintErrorLog(DBG_HERE, "设备号[%d][%d]不存在记录\n", nRepeaterId, nDeviceId);
+		         PrintErrorLog(DBG_HERE, "设备号[%u][%d]不存在记录\n", nRepeaterId, nDeviceId);
 		         return EXCEPTION;
 		     }
 		     InsertInXmlExt(pstruXml,"<omc>/<告警列表>",szAlarmObjList,MODE_AUTOGROW|MODE_UNIQUENAME);
@@ -1690,7 +1690,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         	if (GetDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, &nDevicePort) != NORMAL)
 	         	{
 		         	DeleteXml(pstruXml);
-		         	PrintErrorLog(DBG_HERE, "设备[%d][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
+		         	PrintErrorLog(DBG_HERE, "设备[%u][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
 		         	return EXCEPTION;
 		     	}
 
@@ -1721,7 +1721,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         if (GetDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, &nDevicePort) != NORMAL)
 	         {
 		         	DeleteXml(pstruXml);
-		         	PrintErrorLog(DBG_HERE, "设备[%d][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
+		         	PrintErrorLog(DBG_HERE, "设备[%u][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
 		         	return EXCEPTION;
 		     }
 	         strcpy(struSendPackage.struRepeater.szIP, szDeviceIp);
@@ -1751,7 +1751,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         if (GetDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, &nDevicePort) != NORMAL)
 	         {
 		         	DeleteXml(pstruXml);
-		         	PrintErrorLog(DBG_HERE, "设备[%d][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
+		         	PrintErrorLog(DBG_HERE, "设备[%u][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
 		         	return EXCEPTION;
 		     }
 	         strcpy(struSendPackage.struRepeater.szIP, szDeviceIp);
@@ -1827,7 +1827,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 			sprintf(szTemp, "%d", struSendPackage.nNeId);
 		    InsertInXmlExt(pstruXml,"<omc>/<网元编号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
 		    InsertInXmlExt(pstruXml,"<omc>/<网元编号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
-			sprintf(szTemp, "%d", struSendPackage.struRepeater.nRepeaterId);
+			sprintf(szTemp, "%u", struSendPackage.struRepeater.nRepeaterId);
 			InsertInXmlExt(pstruXml,"<omc>/<设备编号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
 			sprintf(szTemp, "%d", struSendPackage.struRepeater.nDeviceId);
 			InsertInXmlExt(pstruXml,"<omc>/<次编号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
@@ -1860,7 +1860,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         	if (GetDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, &nDevicePort) != NORMAL)
 	         	{
 		         	DeleteXml(pstruXml);
-		         	PrintErrorLog(DBG_HERE, "设备[%d][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
+		         	PrintErrorLog(DBG_HERE, "设备[%u][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
 		         	return EXCEPTION;
 		     	}
 	         	strcpy(struSendPackage.struRepeater.szIP, szDeviceIp);
@@ -1938,7 +1938,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         if (GetDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, &nDevicePort) != NORMAL)
 	         {
 		         	DeleteXml(pstruXml);
-		         	PrintErrorLog(DBG_HERE, "设备[%d][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
+		         	PrintErrorLog(DBG_HERE, "设备[%u][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
 		         	return EXCEPTION;
 		     }
 	         strcpy(struSendPackage.struRepeater.szIP, szDeviceIp);
@@ -1964,7 +1964,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         if (GetDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, &nDevicePort) != NORMAL)
 	         {
 		         	DeleteXml(pstruXml);
-		         	PrintErrorLog(DBG_HERE, "设备[%d][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
+		         	PrintErrorLog(DBG_HERE, "设备[%u][%d]不存在IP和PORT记录\n", nRepeaterId, nDeviceId);
 		         	return EXCEPTION;
 		     }
 	         strcpy(struSendPackage.struRepeater.szIP, szDeviceIp);
@@ -1992,7 +1992,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	{
 		if (GetRedisPackageInfo(QB, &struSendPackage, pstruXml) != NORMAL)
 		{
-			PrintErrorLog(DBG_HERE, "根据QB+RepeaterId获取redis错误 %d_%d_%d\n", nRepeaterId, nDeviceId, QB);
+			PrintErrorLog(DBG_HERE, "根据QB+RepeaterId获取redis错误 %u_%d_%d\n", nRepeaterId, nDeviceId, QB);
 			return EXCEPTION;
 		}
 	}
@@ -2019,12 +2019,12 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 		 {
 		 	 nMapIdValue=ReadWORD(struObject[0].OC+2+j*2);
 		 	 sprintf(szMapIdValue, "%04X", nMapIdValue);
-		 	 sprintf(szMapListId, "Ne%d%d", nRepeaterId, nDeviceId);
+		 	 sprintf(szMapListId, "Ne%u%d", nRepeaterId, nDeviceId);
 	         SaveToMapList(szMapListId, szMapIdValue);
 	     }
 	     CommitTransaction();
 	     
-		 PrintDebugLog(DBG_HERE, "站点[%d]总监控参量[%d]当前返回监控参量[%d]\n", nRepeaterId, nTotalQuery, nNowQuery);
+		 PrintDebugLog(DBG_HERE, "站点[%u]总监控参量[%d]当前返回监控参量[%d]\n", nRepeaterId, nTotalQuery, nNowQuery);
 		 if( nTotalQuery > nNowQuery)//表示还需要继续取
 		 {
 		 	 memset(&struObject[0], 0, sizeof(OBJECTSTRU));
@@ -2036,7 +2036,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         int nObjCount=1; 
 	         
 	         memset(szMsgCont, 0, sizeof(szMsgCont));
-	         struPack.pPack = szMsgCont;
+	         struPack.pPack = (BYTE*)szMsgCont;
 	         struPack.Len = 0;
 	         //获取当前的2G协议流水号
 	         int n2G_QB;
@@ -2063,7 +2063,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         InitPackageToXml(&struSendPackage, pstruXml);
 	         //查询
 	         sprintf(szTemp, "%d", nEleQryLogId);
-		     InsertInXmlExt(pstruXml,"<omc>/<流水号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
+		     //InsertInXmlExt(pstruXml,"<omc>/<流水号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
 		     InsertInXmlExt(pstruXml,"<omc>/<日志号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
 	         InsertInXmlExt(pstruXml,"<omc>/<类型>",  "11", MODE_AUTOGROW|MODE_UNIQUENAME);
 	         InsertInXmlExt(pstruXml,"<omc>/<通信方式>",  "6", MODE_AUTOGROW|MODE_UNIQUENAME); //UDP
@@ -2125,7 +2125,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 		 {
 		 	 nMapIdValue=ReadDWORD(struObject[0].OC+2+j*4);
 		 	 sprintf(szMapIdValue, "%08X", nMapIdValue);
-		 	 sprintf(szMapListId, "Ne%d%d", nRepeaterId, nDeviceId);
+		 	 sprintf(szMapListId, "Ne%u%d", nRepeaterId, nDeviceId);
 	         SaveToMapList(szMapListId, szMapIdValue);
 	     }
 	     CommitTransaction();
@@ -2169,7 +2169,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 	         InitPackageToXml(&struSendPackage, pstruXml);
 	         //查询
 	         sprintf(szTemp, "%d", nEleQryLogId);
-		     InsertInXmlExt(pstruXml,"<omc>/<流水号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
+		     //InsertInXmlExt(pstruXml,"<omc>/<流水号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
 		     InsertInXmlExt(pstruXml,"<omc>/<日志号>", szTemp, MODE_AUTOGROW|MODE_UNIQUENAME);
 	         InsertInXmlExt(pstruXml,"<omc>/<类型>",  "11", MODE_AUTOGROW|MODE_UNIQUENAME);
 	         InsertInXmlExt(pstruXml,"<omc>/<通信方式>",  "6", MODE_AUTOGROW|MODE_UNIQUENAME); //UDP

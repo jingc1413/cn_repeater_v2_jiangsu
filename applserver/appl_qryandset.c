@@ -101,7 +101,7 @@ RESULT QryElementParam(INT nCommType, COMMANDHEAD *pstruHead, REPEATER_INFO *pst
 		stuRepeInfo.RepeaterId= pstruRepeater->nRepeaterId;
 		
 		    	
-	    PrintDebugLog(DBG_HERE, "CommType=[%d]DeviceId=[%d]RepeaterId=[%d]n2G_QB=[%d]nObjCount=[%d]\n", 
+	    PrintDebugLog(DBG_HERE, "CommType=[%d]DeviceId=[%d]RepeaterId=[%u]n2G_QB=[%d]nObjCount=[%d]\n", 
 	        nCommType, stuRepeInfo.DeviceId, stuRepeInfo.RepeaterId,  n2G_QB, nObjCount);
         
         switch(pstruHead->nCommandCode)
@@ -1344,7 +1344,7 @@ RESULT QryEleFristTime(int nNeId, int nCommType)
 	memset(&struHead, 0, sizeof(COMMANDHEAD));
     memset(&struRepeater, 0, sizeof(REPEATER_INFO));
 	struRepeater.nCommType = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<通信方式>"));  
-	struRepeater.nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
+	struRepeater.nRepeaterId = atol(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
 	struRepeater.nDeviceId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<设备编号>")); 
 	strcpy(struRepeater.szTelephoneNum, DemandStrInXmlExt(pstruXml,"<omc>/<站点电话>"));
 	
@@ -1642,7 +1642,7 @@ RESULT SaveEleQryLog(PXMLSTRU pstruReqXml)
 		    "%s,  %d,  %s,   '%s', '%s',"
 			" %d, %d, '%s', '%s', to_date('%s','yyyymmddhh24miss'), '%s', "
 			" 1, %d,  %d, '%s',   'packing') ",
-			DemandStrInXmlExt(pstruReqXml, "<omc>/<日志号>"),
+			DemandStrInXmlExt(pstruReqXml, "<omc>/<流水号>"),
 			atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<明细号>")),
 			DemandStrInXmlExt(pstruReqXml, "<omc>/<网元编号>"),
 			DemandStrInXmlExt(pstruReqXml, "<omc>/<监控对象>"),
@@ -1652,7 +1652,7 @@ RESULT SaveEleQryLog(PXMLSTRU pstruReqXml)
 			atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<任务号>")),
 			"", "0", szDateTime,
 			DemandStrInXmlExt(pstruReqXml, "<omc>/<流水号>"),
-			
+
     	    atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<任务日志号>")),
 			atoi(DemandStrInXmlExt(pstruReqXml,"<omc>/<登录流水号>")),
 			DemandStrInXmlExt(pstruReqXml,"<omc>/<窗体流水号>")
@@ -1725,7 +1725,7 @@ RESULT SaveEleSetLog(PXMLSTRU pstruReqXml)
 		    "%s,  %d,  %s,  '%s', '%s', '%s',"
 			" %s, %d, '%s', '%s', to_date( '%s','yyyy-mm-dd hh24:mi:ss'), '%s',  1,"
 			" %d,  %d, '%s',   'packing') ",
-			DemandStrInXmlExt(pstruReqXml, "<omc>/<日志号>"),
+			DemandStrInXmlExt(pstruReqXml, "<omc>/<流水号>"),
 			atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<明细号>")),
 			DemandStrInXmlExt(pstruReqXml, "<omc>/<网元编号>"),
 			DemandStrInXmlExt(pstruReqXml, "<omc>/<监控对象>"),
@@ -2690,7 +2690,7 @@ RESULT DecodeQueryMapList(SENDPACKAGE *pstruSendPackage)
 	bufclr(szMapId0009List);
 	if (strstr(szQrySerial, "Gprs") == NULL)//如果不是GPRS
 	{
-		sprintf(szMapListId, "Ne%d%d", pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId);
+		sprintf(szMapListId, "Ne%u%d", pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId);
 		if (pstruSendPackage->struHead.nProtocolType != 47)
 		{
 			if (GetMapId0009List(szMapListId, szMapId0009List) != NORMAL)
@@ -2710,7 +2710,7 @@ RESULT DecodeQueryMapList(SENDPACKAGE *pstruSendPackage)
 	}
 	else
 	{         		
-		sprintf(szMapListId, "Ne%d%d", pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId);
+		sprintf(szMapListId, "Ne%u%d", pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId);
 		if (pstruSendPackage->struHead.nProtocolType != 47)
 		{
 			GetMapId0009List(szMapListId, szMapId0009List);
@@ -2781,7 +2781,7 @@ RESULT DecodeQueryMap0001List(SENDPACKAGE *pstruSendPackage)
 	
 	if (strstr(szQrySerial, "Gprs") == NULL)//如果不是GPRS
 	{
-		sprintf(szMapListId, "Ne%d%d", pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId);
+		sprintf(szMapListId, "Ne%u%d", pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId);
 		if (GetMapId0001List(szMapListId, szMapId0001List, szMapIdList) != NORMAL)
 		{
 			 PrintErrorLog(DBG_HERE,"执行开站上报的监控量列表失败\n");
@@ -2790,7 +2790,7 @@ RESULT DecodeQueryMap0001List(SENDPACKAGE *pstruSendPackage)
 	}
 	else
 	{         		
-		sprintf(szMapListId, "Ne%d%d", pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId);
+		sprintf(szMapListId, "Ne%u%d", pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId);
 		GetMapId0001List(szMapListId, szMapId0001List, szMapIdList);
 	}
 	
@@ -2821,12 +2821,12 @@ RESULT DecodeQueryMap0001List(SENDPACKAGE *pstruSendPackage)
     return NORMAL;
 }
 
-RESULT DeleDasNeElement(int nRepeaterId)
+RESULT DeleDasNeElement(UINT nRepeaterId)
 {
 	STR szSql[MAX_SQL_LEN];
 	
 	memset(szSql, 0, sizeof(szSql));
-    snprintf(szSql, sizeof(szSql), "INSERT INTO ne_elementdelete SELECT * FROM ne_element  WHERE NE_REPEATERID = %d AND NE_ROUTE NOT IN (SELECT route_addr FROM ne_daslist WHERE repead_id = %d)",
+    snprintf(szSql, sizeof(szSql), "INSERT INTO ne_elementdelete SELECT * FROM ne_element  WHERE NE_REPEATERID = %u AND NE_ROUTE NOT IN (SELECT route_addr FROM ne_daslist WHERE repead_id = %u)",
          nRepeaterId, nRepeaterId);
      
     PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
@@ -2841,7 +2841,7 @@ RESULT DeleDasNeElement(int nRepeaterId)
 	//if(GetAffectedRows() > 0)
 	{
 		memset(szSql, 0, sizeof(szSql));
-	    snprintf(szSql, sizeof(szSql), "DELETE FROM ne_element WHERE NE_REPEATERID = %d AND NE_ROUTE NOT IN (SELECT route_addr FROM ne_daslist WHERE repead_id = %d)",
+	    snprintf(szSql, sizeof(szSql), "DELETE FROM ne_element WHERE NE_REPEATERID = %u AND NE_ROUTE NOT IN (SELECT route_addr FROM ne_daslist WHERE repead_id = %u)",
 	         nRepeaterId, nRepeaterId);
 	     
 	    PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
@@ -2866,7 +2866,7 @@ RESULT DecodeQueryDasList(SENDPACKAGE *pstruSendPackage)
 	STR szQrySerial[29];
 	STR szProvinceId[10];
 	STR szRouteAddr[20];
-	int nRepeaterId, nDeviceTypeId;
+	UINT nRepeaterId, nDeviceTypeId;
 	BOOL bResult;
 	char szSql[MAX_BUFFER_LEN];
     CURSORSTRU struCursor;
@@ -2883,7 +2883,7 @@ RESULT DecodeQueryDasList(SENDPACKAGE *pstruSendPackage)
 	
 	GetSysParameter("par_SectionName = 'Province' and par_KeyName = 'ProvinceAreCode'", szProvinceId);
 	
-	sprintf(szSql,"SELECT device_id, route_addr, ip_addr, device_typeid, conn_stat, addr_info FROM ne_daslist WHERE repead_id = %d", nRepeaterId);
+	sprintf(szSql,"SELECT device_id, route_addr, ip_addr, device_typeid, conn_stat, addr_info FROM ne_daslist WHERE repead_id = %u", nRepeaterId);
 	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
 	{
@@ -2934,7 +2934,7 @@ RESULT DecodeQueryDasList(SENDPACKAGE *pstruSendPackage)
 }
 
 
-RESULT DeleRfidEle(int nRepeaterId, int nDeviceId)
+RESULT DeleRfidEle(UINT nRepeaterId, int nDeviceId)
 {
 	STR szSql[MAX_SQL_LEN];
 	/*
@@ -2955,7 +2955,7 @@ RESULT DeleRfidEle(int nRepeaterId, int nDeviceId)
 	*/
 	{
 		memset(szSql, 0, sizeof(szSql));
-	    snprintf(szSql, sizeof(szSql), "DELETE FROM ne_rfid WHERE RFI_REPEATERID = %d AND RFI_DEVICEID = %d",
+	    snprintf(szSql, sizeof(szSql), "DELETE FROM ne_rfid WHERE RFI_REPEATERID = %u AND RFI_DEVICEID = %d",
 	         nRepeaterId, nDeviceId);
 	     
 	    PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
@@ -2978,7 +2978,7 @@ RESULT DecodeQueryRfidList(SENDPACKAGE *pstruSendPackage)
 {
 	STR szQrySerial[29];
 	STR szRouteAddr[20];
-	int nRepeaterId, nDeviceId, nDeviceTypeId;
+	UINT nRepeaterId, nDeviceId, nDeviceTypeId;
 	BOOL bResult;
 	char szSql[MAX_BUFFER_LEN];
     CURSORSTRU struCursor;
@@ -2990,7 +2990,7 @@ RESULT DecodeQueryRfidList(SENDPACKAGE *pstruSendPackage)
 	//删除不存在的RFID
 	DeleRfidEle(nRepeaterId, nDeviceId);
 	
-	sprintf(szSql,"SELECT device_id, route_addr, device_typeid, conn_stat FROM ne_rfidlist WHERE repead_id = %d and device_id = %d", 
+	sprintf(szSql,"SELECT device_id, route_addr, device_typeid, conn_stat FROM ne_rfidlist WHERE repead_id = %u and device_id = %d", 
 		nRepeaterId, nDeviceId);
 	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
@@ -3236,7 +3236,7 @@ RESULT UpdateDasEleObjList(SENDPACKAGE *pstruSendPackage,  PSTR pszObjectList, P
 	        " ne_CommTypeId,ne_ServerTelNum,ne_ProtocoltypeId, ne_AreaId, ne_LastUpdateTime,"
 	        " ne_OmcTelNum, ne_DeviceStatusId, ne_Deviceip, ne_devicePort, ne_DeviceTypeId, ne_Route) values("
 	        " %d,  '%s',  '%s', '%s', '%s',"
-	        " '%s', %d, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), '%s',"
+	        " '%s', %u, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), '%s',"
 	        " %d,  '%s', %d, %d,  to_date( '%s','yyyy-mm-dd hh24:mi:ss'),"
 	        " '%s', %d, '%s', %d, %d, '%s')",
 	        nNeId, szNeName,  szNeActiveCol, szNeActiveRow, szNeAlarmEnabled,
@@ -3251,7 +3251,7 @@ RESULT UpdateDasEleObjList(SENDPACKAGE *pstruSendPackage,  PSTR pszObjectList, P
         snprintf(szSql, sizeof(szSql), 
              "update ne_Element set ne_ActiveCol = '%s',ne_ActiveRow = '%s', ne_AlarmEnabledObjList = '%s', ne_AlarmObjList = '%s', "
              " ne_DeviceId = %d, ne_devicetypeid = %d, ne_Deviceip = '%s', ne_ChangedDate = to_date('%s','yyyy-mm-dd hh24:mi:ss'), ne_LastUpdateTime = to_date('%s','yyyy-mm-dd hh24:mi:ss')"
-             " where ne_RepeaterId = %d and ne_Route = '%s'",
+             " where ne_RepeaterId = %u and ne_Route = '%s'",
              szNeActiveCol, szNeActiveRow, szNeAlarmEnabled, szNeAlarmObjList,
              pstruSendPackage->struRepeater.nDeviceId, pstruSendPackage->struRepeater.nDeviceTypeId, pstruSendPackage->struRepeater.szIP,
              GetSysDateTime(), GetSysDateTime(),
@@ -3312,7 +3312,7 @@ RESULT UpdateRfidEleObjList(SENDPACKAGE *pstruSendPackage, INT nUpdateWay)
          sprintf(szNeName, "%s", GetSysDateTime());
          snprintf(szSql, sizeof(szSql), 
             " insert into ne_rfid( rfi_name, rfi_RepeaterId,rfi_DeviceId, rfi_ConnStatus,rfi_DeviceTypeId,rfi_Route, rfi_updatetime) values("
-	        " '%s', %d,  %d, %d, %d, '%s', to_date('%s','yyyy-mm-dd hh24:mi:ss'))",
+	        " '%s', %u,  %d, %d, %d, '%s', to_date('%s','yyyy-mm-dd hh24:mi:ss'))",
 	        szNeName, pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId,  
 	        pstruSendPackage->struRepeater.nConnStatus, pstruSendPackage->struRepeater.nDeviceTypeId,
 	         pstruSendPackage->struRepeater.szRouteAddr, GetSysDateTime());
@@ -3321,7 +3321,7 @@ RESULT UpdateRfidEleObjList(SENDPACKAGE *pstruSendPackage, INT nUpdateWay)
     {
         snprintf(szSql, sizeof(szSql), 
              "update ne_rfid set rfi_connstatus = %d, rfi_devicetypeid = %d, rfi_UpdateTime = to_date('%s','yyyy-mm-dd hh24:mi:ss')"
-             " where ne_RepeaterId = %d and ne_Route = '%s'",
+             " where ne_RepeaterId = %u and ne_Route = '%s'",
              pstruSendPackage->struRepeater.nConnStatus, pstruSendPackage->struRepeater.nDeviceTypeId, GetSysDateTime(),
              pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.szRouteAddr);
     }
@@ -3508,7 +3508,7 @@ RESULT UpdateEleObjList(SENDPACKAGE *pstruSendPackage,  PSTR pszObjectList, PSTR
 	        " ne_CommTypeId,ne_ServerTelNum,ne_ProtocoltypeId, ne_AreaId, ne_LastUpdateTime,"
 	        " ne_OmcTelNum, ne_DeviceStatusId, ne_Deviceip, ne_devicePort) values("
 	        " %d,  '%s', '%s',"
-	        " '%s', %d, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), '%s',"
+	        " '%s', %u, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), '%s',"
 	        " %d,  '%s', %d, %d,  to_date( '%s','yyyy-mm-dd hh24:mi:ss'),"
 	        " '%s', %d, '%s', %d)",
 	        nNeId, szNeName,  szNeActiveCol,
@@ -3520,7 +3520,7 @@ RESULT UpdateEleObjList(SENDPACKAGE *pstruSendPackage,  PSTR pszObjectList, PSTR
     {
         snprintf(szSql, sizeof(szSql), 
              "update ne_Element set ne_ActiveCol = '%s',ne_ActiveRow = '%s',  "
-             " ne_RepeaterId = '%d', ne_DeviceId = %d, ne_ChangedDate = to_date('%s','yyyy-mm-dd hh24:mi:ss'), ne_LastUpdateTime = to_date('%s','yyyy-mm-dd hh24:mi:ss')"
+             " ne_RepeaterId = '%u', ne_DeviceId = %d, ne_ChangedDate = to_date('%s','yyyy-mm-dd hh24:mi:ss'), ne_LastUpdateTime = to_date('%s','yyyy-mm-dd hh24:mi:ss')"
              " where ne_NeId = %d",
              szNeActiveCol, szNeActiveRow, 
              pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId, GetSysDateTime(), GetSysDateTime(),
@@ -3742,7 +3742,7 @@ RESULT UpdateEleObj0001List(SENDPACKAGE *pstruSendPackage,  PSTR pszObjectList, 
 	        " ne_CommTypeId,ne_ServerTelNum,ne_ProtocoltypeId, ne_AreaId, ne_LastUpdateTime,"
 	        " ne_OmcTelNum, ne_DeviceStatusId, ne_Deviceip, ne_devicePort) values("
 	        " %d,  '%s', '%s',  '%s', '%s',"
-	        " '%s', %d, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), '%s',"
+	        " '%s', %u, %d, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), '%s',"
 	        " %d,  '%s', %d, %d,  to_date( '%s','yyyy-mm-dd hh24:mi:ss'),"
 	        " '%s', %d, '%s', %d)",
 	        nNeId, szNeName,  szNeActiveCol, szNeActiveRow, szNeAlarmEnabled,
@@ -3756,7 +3756,7 @@ RESULT UpdateEleObj0001List(SENDPACKAGE *pstruSendPackage,  PSTR pszObjectList, 
     	{
         	snprintf(szSql, sizeof(szSql), 
              "update ne_Element set ne_ActiveCol = CONCAT(ne_ActiveCol, '%s'),ne_ActiveRow = CONCAT(ne_ActiveRow, '%s'), ne_AlarmEnabledObjList = CONCAT(ne_AlarmEnabledObjList, '%s'), ne_AlarmObjList = CONCAT(ne_AlarmObjList, '%s'), "
-             " ne_RepeaterId = '%d', ne_DeviceId = %d, ne_ChangedDate = to_date('%s','yyyy-mm-dd hh24:mi:ss'), ne_LastUpdateTime = to_date('%s','yyyy-mm-dd hh24:mi:ss')"
+             " ne_RepeaterId = '%u', ne_DeviceId = %d, ne_ChangedDate = to_date('%s','yyyy-mm-dd hh24:mi:ss'), ne_LastUpdateTime = to_date('%s','yyyy-mm-dd hh24:mi:ss')"
              " where ne_NeId = %d",
              szNeActiveCol, szNeActiveRow, szNeAlarmEnabled, szNeAlarmObjList,
              pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId, GetSysDateTime(), GetSysDateTime(),
@@ -3766,7 +3766,7 @@ RESULT UpdateEleObj0001List(SENDPACKAGE *pstruSendPackage,  PSTR pszObjectList, 
     	{
         	snprintf(szSql, sizeof(szSql), 
              "update ne_Element set ne_ActiveCol = ne_ActiveCol || '%s',ne_ActiveRow = ne_ActiveRow || '%s', ne_AlarmEnabledObjList = ne_AlarmEnabledObjList || '%s', ne_AlarmObjList = ne_AlarmObjList || '%s', "
-             " ne_RepeaterId = '%d', ne_DeviceId = %d, ne_ChangedDate = to_date('%s','yyyy-mm-dd hh24:mi:ss'), ne_LastUpdateTime = to_date('%s','yyyy-mm-dd hh24:mi:ss')"
+             " ne_RepeaterId = '%u', ne_DeviceId = %d, ne_ChangedDate = to_date('%s','yyyy-mm-dd hh24:mi:ss'), ne_LastUpdateTime = to_date('%s','yyyy-mm-dd hh24:mi:ss')"
              " where ne_NeId = %d",
              szNeActiveCol, szNeActiveRow, szNeAlarmEnabled, szNeAlarmObjList,
              pstruSendPackage->struRepeater.nRepeaterId, pstruSendPackage->struRepeater.nDeviceId, GetSysDateTime(), GetSysDateTime(),
@@ -4418,10 +4418,10 @@ RESULT RemortUpdateDbOperate1(PXMLSTRU pstruReqXml)
 		}
 	    memset(szSql, 0, sizeof(szSql));
 		sprintf(szSql, "insert into sm_firmwareupdatelog_m (FULM_ID, FULM_NEID, PULM_NENAME, FULM_REPEATERID, FULM_DEVICEID, FULM_PROTOCOLTYPEID, PULM_DEVICETYPEID, FULM_TELPHONENUM, FULM_UPDATEMODE, FULM_EVENTTIME, FULM_LOGID, FULM_WINDOWLOGID)"
-		               " values(%d, %d, ' ', %d, %d, 1, 141, '%s', 2, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), 0, 0)",
+		               " values(%d, %d, ' ', %u, %d, 1, 141, '%s', 2, to_date( '%s','yyyy-mm-dd hh24:mi:ss'), 0, 0)",
 		                nFulm_Id,
 		                atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<网元编号>")),
-		                atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<站点编号>")),
+		                atol(DemandStrInXmlExt(pstruReqXml, "<omc>/<站点编号>")),
 		                atoi(DemandStrInXmlExt(pstruReqXml, "<omc>/<设备编号>")),
 		                DemandStrInXmlExt(pstruReqXml, "<omc>/<站点电话>"),
 		                GetSysDateTime()
@@ -4691,7 +4691,7 @@ RESULT SetAllElementParam(int nNeId)
 	memset(&struHead, 0, sizeof(COMMANDHEAD));
     memset(&struRepeater, 0, sizeof(REPEATER_INFO));
 	struRepeater.nCommType = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<通信方式>"));  
-	struRepeater.nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
+	struRepeater.nRepeaterId = atol(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
 	struRepeater.nDeviceId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<设备编号>")); 
 	strcpy(struRepeater.szTelephoneNum, DemandStrInXmlExt(pstruXml,"<omc>/<站点电话>"));
 	strcpy(struRepeater.szIP, DemandStrInXmlExt(pstruXml,"<omc>/<站点IP>"));

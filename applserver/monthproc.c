@@ -174,7 +174,7 @@ RESULT ProcessBCCH_RxLev()
 		memset(&struHead, 0, sizeof(COMMANDHEAD));
     	memset(&struRepeater, 0, sizeof(REPEATER_INFO));
 		struRepeater.nCommType = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<通信方式>"));  
-		struRepeater.nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
+		struRepeater.nRepeaterId = atol(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
 		struRepeater.nDeviceId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<设备编号>")); 
 		strcpy(struRepeater.szTelephoneNum, DemandStrInXmlExt(pstruXml,"<omc>/<站点电话>"));
 		strcpy(struRepeater.szIP, DemandStrInXmlExt(pstruXml,"<omc>/<站点IP>"));

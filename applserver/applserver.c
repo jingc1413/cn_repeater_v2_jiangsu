@@ -170,7 +170,7 @@ RESULT ProcessQuerySetTrans(PSTR pszCaReqBuffer)
     memset(&struRepeater, 0, sizeof(REPEATER_INFO));
 	nNeId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<网元编号>"));  
 	struRepeater.nCommType = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<通信方式>"));  
-	struRepeater.nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
+	struRepeater.nRepeaterId = atol(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
 	struRepeater.nDeviceId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<设备编号>")); 
 	strcpy(struRepeater.szTelephoneNum, DemandStrInXmlExt(pstruXml,"<omc>/<站点电话>"));
 	
@@ -208,7 +208,7 @@ RESULT ProcessQuerySetTrans(PSTR pszCaReqBuffer)
 	strcpy(szQryEleParam, DemandStrInXmlExt(pstruXml,"<omc>/<监控对象>"));
 	if (strlen(szQryEleParam) == 0)
 	{
-		PrintDebugLog(DBG_HERE,"查询[%d][%s]监控对象为空\n", struRepeater.nRepeaterId, struRepeater.szTelephoneNum);
+		PrintDebugLog(DBG_HERE,"查询[%u][%s]监控对象为空\n", struRepeater.nRepeaterId, struRepeater.szTelephoneNum);
 		DeleteXml(pstruXml);
 		return EXCEPTION;
 	}
@@ -528,11 +528,11 @@ RESULT ProcessGprsQrySetTrans(INT nSock, PSTR pszCaReqBuffer)
 		DeleteXml(pstruXml);
 		return -1;
 	}
-    int nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<repeaterid>"));
+    UINT nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<repeaterid>"));
 	int nDeviceId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<deviceid>"));
 	
 	//更新网元gprs联机状态
-	sprintf(szSql,"update ne_element set ne_state = '1' where  ne_repeaterid = %d and ne_deviceid = %d ", 
+	sprintf(szSql,"update ne_element set ne_state = '1' where  ne_repeaterid = %u and ne_deviceid = %d ", 
 	    nRepeaterId, nDeviceId);
 	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 	if(ExecuteSQL(szSql)!=NORMAL)
@@ -547,7 +547,7 @@ RESULT ProcessGprsQrySetTrans(INT nSock, PSTR pszCaReqBuffer)
 		//等待消息
 		sleep(5);
 		memset(szSql, 0, sizeof(szSql));
-		sprintf(szSql, "select qs_netflag,  qs_telephonenum, qs_content from NE_GPRSQUEUE where QS_REPEATERID = %d and QS_DEVICEID = %d and QS_MSGSTAT = '0' order by QS_ID",
+		sprintf(szSql, "select qs_netflag, qs_telephonenum, qs_content from NE_GPRSQUEUE where QS_REPEATERID = %u and QS_DEVICEID = %d and QS_MSGSTAT = '0' order by QS_ID",
 		        nRepeaterId, nDeviceId);
 		//PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 		if(SelectTableRecord(szSql, &struCursor) != NORMAL)
@@ -567,7 +567,7 @@ RESULT ProcessGprsQrySetTrans(INT nSock, PSTR pszCaReqBuffer)
 		FreeCursor(&struCursor);
 		if (nDetail > 0)//有消息
 		{
-			sprintf(szSql,"update NE_GPRSQUEUE set qs_msgstat = '1' where  qs_repeaterid = %d and qs_deviceid = %d ", 
+			sprintf(szSql, "update NE_GPRSQUEUE set qs_msgstat = '1' where  qs_repeaterid = %u and qs_deviceid = %d ", 
 			    nRepeaterId, nDeviceId);
 			PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 			if(ExecuteSQL(szSql)!=NORMAL)
@@ -621,11 +621,11 @@ RESULT ProcessGprsOffLine(PSTR pszCaReqBuffer)
 		DeleteXml(pstruXml);
 		return -1;
 	}
-    int nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<repeaterid>"));
+    UINT nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<repeaterid>"));
 	int nDeviceId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<deviceid>"));
 	
 	//更新网元gprs脱机状态
-	sprintf(szSql,"update ne_element set ne_state = '0' where  ne_repeaterid = %d and ne_deviceid = %d ", 
+	sprintf(szSql,"update ne_element set ne_state = '0' where  ne_repeaterid = %u and ne_deviceid = %d ", 
 	    nRepeaterId, nDeviceId);
 	PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 	if(ExecuteSQL(szSql)!=NORMAL)
@@ -961,7 +961,7 @@ RESULT ProcessTurnTask(PSTR pszCaReqBuffer)
         //赋值
         nNeId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<网元编号>"));  
 	    struRepeater.nCommType = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<通信方式>"));  
-	    struRepeater.nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
+	    struRepeater.nRepeaterId = atol(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
 	    struRepeater.nDeviceId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<设备编号>")); 
 	    strcpy(struRepeater.szTelephoneNum, DemandStrInXmlExt(pstruXml,"<omc>/<站点电话>"));
 	    strcpy(struRepeater.szIP, DemandStrInXmlExt(pstruXml,"<omc>/<站点IP>"));
@@ -1492,7 +1492,7 @@ RESULT ProcessTimeReTurnTask(PSTR pszCaReqBuffer)
         //赋值
         nNeId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<网元编号>"));  
 	    struRepeater.nCommType = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<通信方式>"));  
-	    struRepeater.nRepeaterId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
+	    struRepeater.nRepeaterId = atol(DemandStrInXmlExt(pstruXml,"<omc>/<站点编号>")); 
 	    struRepeater.nDeviceId = atoi(DemandStrInXmlExt(pstruXml,"<omc>/<设备编号>")); 
 	    strcpy(struRepeater.szTelephoneNum, DemandStrInXmlExt(pstruXml,"<omc>/<站点电话>"));
 	    strcpy(struRepeater.szIP, DemandStrInXmlExt(pstruXml,"<omc>/<站点IP>"));

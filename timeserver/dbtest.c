@@ -105,7 +105,7 @@ RESULT FreeRedisConn()
 }
 
 
-RESULT GetRedisDeviceIpInfo(int nRepeaterId, int nDeviceId,PSTR pszDeviceIp, int *pPort)
+RESULT GetRedisDeviceIpInfo(unsigned int nRepeaterId, int nDeviceId,PSTR pszDeviceIp, int *pPort)
 {
 
 	char szMessage[8000];
@@ -126,19 +126,19 @@ RESULT GetRedisDeviceIpInfo(int nRepeaterId, int nDeviceId,PSTR pszDeviceIp, int
   			
     //PrintDebugLog(DBG_HERE, "HSET ne_deviceip %d_%d %s\n", nRepeaterId, nDeviceId,
   	//		pMessageBoby);
-	reply = redisCommand(redisconn,"HSET ne_deviceip %d_%d {\"qs_deviceip\":\"%s\",\"qs_port\":%d,\"qs_eventtime\":\"%s\"}", nRepeaterId, nDeviceId,
+	reply = redisCommand(redisconn,"HSET ne_deviceip %u_%d {\"qs_deviceip\":\"%s\",\"qs_port\":%d,\"qs_eventtime\":\"%s\"}", nRepeaterId, nDeviceId,
   			"192.168.4.2", 999, GetSysDateTime());
   			
-	PrintDebugLog(DBG_HERE, "HSET ne_deviceip %d_%d {\"qs_deviceip\":\"%s\",\"qs_port\":%d,\"qs_eventtime\":\"%s\"}\n", nRepeaterId, nDeviceId,
+	PrintDebugLog(DBG_HERE, "HSET ne_deviceip %u_%d {\"qs_deviceip\":\"%s\",\"qs_port\":%d,\"qs_eventtime\":\"%s\"}\n", nRepeaterId, nDeviceId,
   			"192.168.4.2", 999, GetSysDateTime());
 	freeReplyObject(reply);
 	
-	reply = redisCommand(redisconn,"HGET ne_deviceip %d_%d", nRepeaterId, nDeviceId);
+	reply = redisCommand(redisconn,"HGET ne_deviceip %u_%d", nRepeaterId, nDeviceId);
 	if (reply == NULL || redisconn->err) {   //10.25
 		PrintErrorLog(DBG_HERE, "Redis HGET man_eleqrylog error: %s\n", redisconn->errstr);
 		return -1;
 	}
-	PrintDebugLog(DBG_HERE, "HGET ne_deviceip %d_%d %d %s\n", nRepeaterId,
+	PrintDebugLog(DBG_HERE, "HGET ne_deviceip %u_%d %d %s\n", nRepeaterId,
 			nDeviceId, 	reply->type,reply->str);
 	if(reply->type == REDIS_REPLY_NIL){
 		freeReplyObject(reply);

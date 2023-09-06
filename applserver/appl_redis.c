@@ -135,7 +135,7 @@ RESULT RedisHsetAndPush(PXMLSTRU  pstruXml)
 	cjson_log = cJSON_CreateObject();
 	cjson_que = cJSON_CreateObject();
 	//流水号  mmddhhmm+5位流水号
-    cJSON_AddStringToObject(cjson_log, "qry_eleqrylogid", DemandStrInXmlExt(pstruXml, "<omc>/<日志号>"));
+    cJSON_AddStringToObject(cjson_log, "qry_eleqrylogid", DemandStrInXmlExt(pstruXml, "<omc>/<流水号>"));
     cJSON_AddStringToObject(cjson_log, "qry_eleid", DemandStrInXmlExt(pstruXml, "<omc>/<网元编号>"));
     cJSON_AddStringToObject(cjson_log, "qry_property",	DemandStrInXmlExt( pstruXml, "<omc>/<监控对象>"));
 	cJSON_AddStringToObject(cjson_log, "qry_style",		DemandStrInXmlExt(pstruXml, "<omc>/<命令号>"));
@@ -182,12 +182,12 @@ RESULT RedisHsetAndPush(PXMLSTRU  pstruXml)
   	cJSON_Delete(cjson_que);
   	
   	
-  	reply = redisCommand(redisconn,"HSET man_eleqrylog %d_%d_%d %s", 
+  	reply = redisCommand(redisconn,"HSET man_eleqrylog %u_%d_%d %s", 
   			atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")), 
   			atoi(DemandStrInXmlExt(pstruXml, "<omc>/<设备编号>")), 
   			atoi(DemandStrInXmlExt(pstruXml, "<omc>/<序列号>")),
   			pEleQryLogBoby);
-	PrintDebugLog(DBG_HERE, "HSET man_eleqrylog: %d_%d_%d, %s\n", 
+	PrintDebugLog(DBG_HERE, "HSET man_eleqrylog: %u_%d_%d, %s\n", 
 			atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")), 
   			atoi(DemandStrInXmlExt(pstruXml, "<omc>/<设备编号>")), 
   			atoi(DemandStrInXmlExt(pstruXml, "<omc>/<序列号>")), 
@@ -199,13 +199,13 @@ RESULT RedisHsetAndPush(PXMLSTRU  pstruXml)
 	freeReplyObject(reply);
 	
 
-	reply = redisCommand(redisconn,"LPUSH Queue%d %s", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")), pMessageBoby);
+	reply = redisCommand(redisconn,"LPUSH Queue%u %s", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")), pMessageBoby);
 	
-	PrintDebugLog(DBG_HERE, "LPUSH %d_%d %s\n", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")),
+	PrintDebugLog(DBG_HERE, "LPUSH %u_%d %s\n", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")),
 			atoi(DemandStrInXmlExt(pstruXml, "<omc>/<设备编号>")),  pMessageBoby);
     freeReplyObject(reply);
      
-	reply = redisCommand(redisconn,"EXPIRE Queue%d 43200", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")));
+	reply = redisCommand(redisconn,"EXPIRE Queue%u 43200", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")));
     freeReplyObject(reply);
     
     if(pEleQryLogBoby)
@@ -231,16 +231,16 @@ RESULT PushElementParamQueue(int nTaskLogId, PSTR pszEleParamSQL)
 	return NORMAL;
 }
 
-RESULT PushGprsQueue(int nRepeaterId, int nDeviceId, PSTR pszMsgCont)
+RESULT PushGprsQueue(UINT nRepeaterId, int nDeviceId, PSTR pszMsgCont)
 {
 	redisReply *reply;
 	
-	reply = redisCommand(redisconn,"LPUSH %d_%d %s", nRepeaterId,nDeviceId,  pszMsgCont);
+	reply = redisCommand(redisconn,"LPUSH %u_%d %s", nRepeaterId,nDeviceId,  pszMsgCont);
 	if (reply == NULL || redisconn->err) {   //10.25
 		PrintErrorLog(DBG_HERE, "Redis LPUSH EleParamQueue error: %s\n", redisconn->errstr);
 		return -1;
 	}
-    PrintDebugLog(DBG_HERE, "LPUSH %d_%d \n[%s]\n", nRepeaterId, nDeviceId,  pszMsgCont);
+    PrintDebugLog(DBG_HERE, "LPUSH %u_%d \n[%s]\n", nRepeaterId, nDeviceId,  pszMsgCont);
     freeReplyObject(reply);
     
 	return NORMAL;
@@ -366,13 +366,13 @@ RESULT GetRedisPackageInfo(int nQB, SENDPACKAGE *pstruSendInfo, PXMLSTRU  pstruX
 	cJSON* cjson_root = NULL;
 	cJSON* cjson_item = NULL;
 	
-	reply = redisCommand(redisconn,"HGET man_eleqrylog %d_%d_%d", pstruSendInfo->struRepeater.nRepeaterId,
+	reply = redisCommand(redisconn,"HGET man_eleqrylog %u_%d_%d", pstruSendInfo->struRepeater.nRepeaterId,
 			pstruSendInfo->struRepeater.nDeviceId, 	nQB);
 	if (reply == NULL || redisconn->err) {   //10.25
 		PrintErrorLog(DBG_HERE, "Redis HGET man_eleqrylog error: %s\n", redisconn->errstr);
 		return -1;
 	}
-	PrintDebugLog(DBG_HERE, "HGET man_eleqrylog: %d_%d_%d %d %s\n", pstruSendInfo->struRepeater.nRepeaterId,
+	PrintDebugLog(DBG_HERE, "HGET man_eleqrylog: %u_%d_%d %d %s\n", pstruSendInfo->struRepeater.nRepeaterId,
 			pstruSendInfo->struRepeater.nDeviceId, 	nQB, reply->type,reply->str);
 	if(reply->type == REDIS_REPLY_NIL){
 		freeReplyObject(reply);
@@ -385,9 +385,9 @@ RESULT GetRedisPackageInfo(int nQB, SENDPACKAGE *pstruSendInfo, PXMLSTRU  pstruX
     if(cjson_root == NULL)
     {
         PrintErrorLog(DBG_HERE, "parse man_eleqrylog fail.\n");
-        reply = redisCommand(redisconn,"HDEL man_eleqrylog %d_%d_%d", pstruSendInfo->struRepeater.nRepeaterId,
+        reply = redisCommand(redisconn,"HDEL man_eleqrylog %u_%d_%d", pstruSendInfo->struRepeater.nRepeaterId,
 			pstruSendInfo->struRepeater.nDeviceId, 	nQB);
-	    PrintDebugLog(DBG_HERE, "HDEL man_eleqrylog: %d_%d_%d", pstruSendInfo->struRepeater.nRepeaterId,
+	    PrintDebugLog(DBG_HERE, "HDEL man_eleqrylog: %u_%d_%d", pstruSendInfo->struRepeater.nRepeaterId,
 			pstruSendInfo->struRepeater.nDeviceId, 	nQB);
 	    freeReplyObject(reply);
         return -1;
@@ -456,16 +456,16 @@ RESULT GetRedisPackageInfo(int nQB, SENDPACKAGE *pstruSendInfo, PXMLSTRU  pstruX
 
 	//将队列表删除
 	{
-		reply = redisCommand(redisconn,"HDEL man_eleqrylog %d_%d_%d", pstruSendInfo->struRepeater.nRepeaterId,
+		reply = redisCommand(redisconn,"HDEL man_eleqrylog %u_%d_%d", pstruSendInfo->struRepeater.nRepeaterId,
 			pstruSendInfo->struRepeater.nDeviceId, 	nQB);
-	    PrintDebugLog(DBG_HERE, "HDEL man_eleqrylog: %d_%d_%d\n", pstruSendInfo->struRepeater.nRepeaterId,
+	    PrintDebugLog(DBG_HERE, "HDEL man_eleqrylog: %u_%d_%d\n", pstruSendInfo->struRepeater.nRepeaterId,
 			pstruSendInfo->struRepeater.nDeviceId, 	nQB);
 	    freeReplyObject(reply);
 	}
 	return NORMAL;
 }
 
-RESULT GetRedisDeviceIpInfo(int nRepeaterId, int nDeviceId,PSTR pszDeviceIp, int *pPort)
+RESULT GetRedisDeviceIpInfo(UINT nRepeaterId, int nDeviceId,PSTR pszDeviceIp, int *pPort)
 {
 
 	char szMessage[1000];
@@ -473,13 +473,13 @@ RESULT GetRedisDeviceIpInfo(int nRepeaterId, int nDeviceId,PSTR pszDeviceIp, int
 	cJSON* cjson_root = NULL;
 	cJSON* cjson_item = NULL;
 	
-	reply = redisCommand(redisconn,"HGET ne_deviceip %d_%d", nRepeaterId, nDeviceId);
+	reply = redisCommand(redisconn,"HGET ne_deviceip %u_%d", nRepeaterId, nDeviceId);
 	if (reply == NULL || redisconn->err) {   //10.25
 		PrintErrorLog(DBG_HERE, "Redis HGET man_eleqrylog error: %s\n", redisconn->errstr);
 		return -1;
 	}
-	PrintDebugLog(DBG_HERE, "HGET ne_deviceip: %d_%d %d %s\n", nRepeaterId,
-			nDeviceId, 	reply->type,reply->str);
+	PrintDebugLog(DBG_HERE, "HGET ne_deviceip: %u_%d %d %s\n", nRepeaterId,
+			nDeviceId, 	reply->type, reply->str);
 	if(reply->type == REDIS_REPLY_NIL){
 		freeReplyObject(reply);
         return -1;
