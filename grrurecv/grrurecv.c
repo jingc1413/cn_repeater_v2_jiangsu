@@ -324,7 +324,7 @@ BOOL AscEsc(BYTEARRAY *Pack)
 /*
  * 同GPRSSERV程序通信，等同GPRSSEND
  */
-RESULT ExchDataGprsSvr(PSTR pszRespBuffer, unsigned int nRepeaterId, int is_heartbeat)
+RESULT ExchDataGprsSvr(PSTR pszRespBuffer, unsigned int nRepeaterId, int nDeviceId, int is_heartbeat)
 {
     int fd;
 	STR szBuffer[MAX_BUFFER_LEN];
@@ -358,7 +358,7 @@ RESULT ExchDataGprsSvr(PSTR pszRespBuffer, unsigned int nRepeaterId, int is_hear
         }
         close(fd);
         */
-        sprintf(szBuffer, "%u", nRepeaterId);
+        sprintf(szBuffer, "%u_%d", nRepeaterId, nDeviceId);
         PushHeartBeat(szBuffer);
     }
     else
@@ -963,7 +963,7 @@ RESULT ProcessGprsQueue(int nSock, UINT nRepeaterId, int nDeviceId, struct socka
 			}
 		    PrintDebugLog(DBG_HERE, "recv device[%s]\n", szDataBuffer);
 		    
-		    if (ExchDataGprsSvr(szDataBuffer, nRepeaterId, 0) != NORMAL)
+		    if (ExchDataGprsSvr(szDataBuffer, nRepeaterId, nDeviceId, 0) != NORMAL)
 		    {
 		    	UpdateGprsQueue(nDcsId, OMC_FAIL_MSGSTAT);
 		    	continue;
@@ -1105,7 +1105,7 @@ RESULT ProcessGrruData(INT nSock, PSTR pszCaReqBuffer, INT nLen, struct sockaddr
         return -1;
     }
     //判断是否心跳，心跳转发到hbserv，其它gprsserv
-    ExchDataGprsSvr(szReqBuffer, nRepeaterId, is_heartbeat);
+    ExchDataGprsSvr(szReqBuffer, nRepeaterId, nDeviceId, is_heartbeat);
     
     if(nWuXian==1 || getenv("WUXIAN")!=NULL)
     {

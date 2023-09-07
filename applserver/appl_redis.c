@@ -475,7 +475,7 @@ RESULT GetRedisDeviceIpInfo(UINT nRepeaterId, int nDeviceId,PSTR pszDeviceIp, in
 	
 	reply = redisCommand(redisconn,"HGET ne_deviceip %u_%d", nRepeaterId, nDeviceId);
 	if (reply == NULL || redisconn->err) {   //10.25
-		PrintErrorLog(DBG_HERE, "Redis HGET man_eleqrylog error: %s\n", redisconn->errstr);
+		PrintErrorLog(DBG_HERE, "Redis HGET ne_deviceip error: %s\n", redisconn->errstr);
 		return -1;
 	}
 	PrintDebugLog(DBG_HERE, "HGET ne_deviceip: %u_%d %d %s\n", nRepeaterId,
@@ -490,7 +490,7 @@ RESULT GetRedisDeviceIpInfo(UINT nRepeaterId, int nDeviceId,PSTR pszDeviceIp, in
 	cjson_root = cJSON_Parse(szMessage);
     if(cjson_root == NULL)
     {
-        PrintErrorLog(DBG_HERE, "parse man_eleqrylog fail.\n");
+        PrintErrorLog(DBG_HERE, "parse ne_deviceip fail.\n");
         return -1;
     }
     cjson_item = cJSON_GetObjectItem(cjson_root, "qs_deviceip");

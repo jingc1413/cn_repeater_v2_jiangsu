@@ -1604,7 +1604,7 @@ RESULT ProcRedisHeartBeat()
 		memset(szRepeaterIds, 0, sizeof(szRepeaterIds)); 
 		for(i=0; i< 50; i++)
 	    {
-		    reply = redisCommand(redisconn,"BRPOP HeartBeatQueue 5");
+		    reply = redisCommand(redisconn,"BRPOP HeartBeatQueue 20");
 		    if (reply == NULL || redisconn->err) {   //10.25
 				PrintErrorLog(DBG_HERE, "Redis BRPOP ElementSQLQueue error: %s\n", redisconn->errstr);
 				sleep(10);
@@ -1637,28 +1637,163 @@ RESULT ProcRedisHeartBeat()
 		    if (reply->type == REDIS_REPLY_ARRAY && reply->elements==2) {
 		    	nTimes++;
 		        //PrintDebugLog(DBG_HERE, "RPOP [%s]\n",  reply->element[1]->str);
-			    sprintf(szRepeaterIds, "%s%u,", szRepeaterIds, atoi(reply->element[1]->str));
+			    //sprintf(szRepeaterIds, "%s%u,", szRepeaterIds, atoi(reply->element[1]->str));
+				sprintf(szRepeaterIds, "%s%s,", szRepeaterIds, reply->element[1]->str);
 		    }
 		    freeReplyObject(reply);
 		}
 		if (nTimes>0)
 		{
 			TrimRightOneChar(szRepeaterIds, ',');
-			
-			snprintf(szSql, sizeof (szSql), "update man_linklog set mnt_lastupdatetime=NOW() where mnt_repeaterid in (%s)", szRepeaterIds);
-	        PrintDebugLog(DBG_HERE,"Execute SQL[%s]\n",szSql);
-			if(ExecuteSQL(szSql)!=NORMAL)
-	        {
-	            PrintErrorLog(DBG_HERE,"执行 SQL语句[%s]错误信息=[%s]\n",szSql,GetSQLErrorMessage());
-	            return EXCEPTION;
-	        }
-	        CommitTransaction();
+
+			int nCount = 0;
+			int i = 0;
+			PSTR pszSeperateStr[100];
+			nCount= SeperateString(szRepeaterIds, ',', pszSeperateStr, 100);
+			for(i=0; i< nCount; i++){
+				if pszSeperateStr[i]==NULL || strlen(pszSeperateStr[i])<3{
+					continue
+				}
+				PSTR pszRD[10];
+				int sepCnt = 0;
+				sepCnt = SeperateString(pszSeperateStr[i], '_', pszRD, 10);
+				if sepCnt !=2 {
+					continue
+				}
+				UINT nRepeaterId = 0;
+				int nDeviceId = 0;
+				nRepeaterId = atol(pszRD[0]);
+				nDeviceId = atoi(pszRD[1]);
+				snprintf(szSql, sizeof (szSql), "update man_linklog set mnt_lastupdatetime=NOW() where mnt_repeaterid=%u and mnt_deviceid=%d", nRepeaterId, nDeviceId);	
+				PrintDebugLog(DBG_HERE,"Execute SQL[%s]\n", szSql);
+				if(ExecuteSQL(szSql)!=NORMAL)
+				{
+					PrintErrorLog(DBG_HERE,"执行 SQL语句[%s]错误信息=[%s]\n", szSql, GetSQLErrorMessage());
+					continue;
+				}
+
+				{
+					//update database ne_deviceip
+					char szDeviceIp[30];
+					int nDevicePort;
+					if (getenv("WUXIAN")!=NULL)
+					{
+						if (GetRedisDeviceIpInfo(nRepeaterId, nDeviceId, szDeviceIp, &nDevicePort)!= NORMAL)
+						{
+							PrintErrorLog(DBG_HERE, "GetRedisDeviceIpInfo is null, [ %u-%d ]\n", nRepeaterId, nDeviceId);
+							continue;
+						}
+					}else{
+						PrintErrorLog(DBG_HERE, "update database ne_deviceip error, unsupport, [ %u-%d ]\n", nRepeaterId, nDeviceId);
+						continue;
+					}
+					SaveDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, nDevicePort);
+				}
+			}
+			CommitTransaction();
 		}
 		
 		ClearRedisEleqrylog();
 	}
 	FreeRedisConn();
 	
+	return NORMAL;
+}
+
+RESULT SaveDeviceIp(UINT nRepeaterId, INT nDeviceId, STR szClientIp, int nClientPort)
+{
+    char szSql[MAX_BUFFER_LEN];
+	CURSORSTRU struCursor;
+	STR szDeviceIp[20];
+	int nDevicePort;
+	 
+	if (strcmp(szClientIp, "0.0.0.0") == 0)
+		return EXCEPTION;
+		
+    memset(szSql, 0, sizeof(szSql));
+    sprintf(szSql, "select qs_deviceip,qs_port from ne_deviceip where qs_RepeaterId = %u and qs_DeviceId = %d",
+	        nRepeaterId, nDeviceId);
+	PrintDebugLog(DBG_HERE, "Execute SQL[%s]\n", szSql);
+	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
+	{
+		PrintErrorLog(DBG_HERE, "Execute SQL[%s]错误, 信息为[%s]\n", \
+					  szSql, GetSQLErrorMessage());
+		return EXCEPTION;
+	}
+	if(FetchCursor(&struCursor) != NORMAL)
+	{
+	    FreeCursor(&struCursor);
+		snprintf(szSql, sizeof(szSql), "insert into ne_deviceip (qs_repeaterid,qs_deviceid, qs_deviceip, qs_port, qs_eventtime) values (%u, %d, '%s', %d, sysdate)",
+    	     nRepeaterId, nDeviceId, szClientIp, nClientPort);
+    	PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
+		if(ExecuteSQL(szSql) != NORMAL)
+		{
+			PrintErrorLog(DBG_HERE, "执行SQL语句失败[%s][%s]\n",
+				szSql, GetSQLErrorMessage());
+    	    return EXCEPTION;
+		}
+		CommitTransaction();
+	}
+	else
+	{
+		strcpy(szDeviceIp, GetTableFieldValue(&struCursor, "qs_deviceip"));
+		nDevicePort=atoi(GetTableFieldValue(&struCursor, "qs_port"));
+		FreeCursor(&struCursor);
+		
+		if (strcmp(szDeviceIp, szClientIp)!=0 || (nClientPort!=nDevicePort))
+		{
+		    snprintf(szSql, sizeof(szSql), "update ne_deviceip set qs_deviceip = '%s', qs_port = %d, qs_eventtime = sysdate where qs_repeaterid = %u and qs_deviceid = %d",
+		         szClientIp, nClientPort, nRepeaterId, nDeviceId);
+		    PrintDebugLog(DBG_HERE, "开始执行SQL[%s]\n", szSql);
+			if(ExecuteSQL(szSql) != NORMAL)
+			{
+				PrintErrorLog(DBG_HERE, "执行SQL语句失败[%s][%s]\n",
+					szSql, GetSQLErrorMessage());
+		        return EXCEPTION;
+			}
+			CommitTransaction();
+		}
+		
+	}
+	return NORMAL; 
+}
+
+RESULT GetRedisDeviceIpInfo(UINT nRepeaterId, int nDeviceId, PSTR pszDeviceIp, int *pPort)
+{
+	char szMessage[1000];
+	redisReply *reply;
+	cJSON* cjson_root = NULL;
+	cJSON* cjson_item = NULL;
+	
+	reply = redisCommand(redisconn,"HGET ne_deviceip %u_%d", nRepeaterId, nDeviceId);
+	if (reply == NULL || redisconn->err) {   //10.25
+		PrintErrorLog(DBG_HERE, "Redis HGET ne_deviceip error: %s\n", redisconn->errstr);
+		return -1;
+	}
+	PrintDebugLog(DBG_HERE, "HGET ne_deviceip: %u_%d %d %s\n", nRepeaterId,
+			nDeviceId, 	reply->type, reply->str);
+	if(reply->type == REDIS_REPLY_NIL){
+		freeReplyObject(reply);
+        return -1;
+	}
+	strcpy(szMessage, reply->str);
+	freeReplyObject(reply);
+	
+	cjson_root = cJSON_Parse(szMessage);
+    if(cjson_root == NULL)
+    {
+        PrintErrorLog(DBG_HERE, "parse ne_deviceip fail.\n");
+        return -1;
+    }
+    cjson_item = cJSON_GetObjectItem(cjson_root, "qs_deviceip");
+	strcpy(pszDeviceIp, cjson_item->valuestring);
+	//PrintDebugLog(DBG_HERE,"%s\n", pszDeviceIp);
+	
+	cjson_item = cJSON_GetObjectItem(cjson_root, "qs_port");
+    *pPort = cjson_item->valueint;
+	//PrintDebugLog(DBG_HERE,"%d\n", atoi(cjson_item->valuestring));
+	cJSON_Delete(cjson_root);
+
 	return NORMAL;
 }
 
