@@ -1602,9 +1602,9 @@ RESULT ProcRedisHeartBeat()
 	{   
 		nTimes=0;
 		memset(szRepeaterIds, 0, sizeof(szRepeaterIds)); 
-		for(i=0; i< 50; i++)
+		for(i=0; i< 5; i++)
 	    {
-		    reply = redisCommand(redisconn,"BRPOP HeartBeatQueue 20");
+		    reply = redisCommand(redisconn,"BRPOP HeartBeatQueue 3");
 		    if (reply == NULL || redisconn->err) {   //10.25
 				PrintErrorLog(DBG_HERE, "Redis BRPOP ElementSQLQueue error: %s\n", redisconn->errstr);
 				sleep(10);
@@ -1651,14 +1651,14 @@ RESULT ProcRedisHeartBeat()
 			PSTR pszSeperateStr[100];
 			nCount= SeperateString(szRepeaterIds, ',', pszSeperateStr, 100);
 			for(i=0; i< nCount; i++){
-				if pszSeperateStr[i]==NULL || strlen(pszSeperateStr[i])<3{
-					continue
+				if (pszSeperateStr[i] == NULL || strlen(pszSeperateStr[i]) < 3){
+					continue;
 				}
 				PSTR pszRD[10];
 				int sepCnt = 0;
 				sepCnt = SeperateString(pszSeperateStr[i], '_', pszRD, 10);
-				if sepCnt !=2 {
-					continue
+				if (sepCnt != 2) {
+					continue;
 				}
 				UINT nRepeaterId = 0;
 				int nDeviceId = 0;
@@ -1671,6 +1671,7 @@ RESULT ProcRedisHeartBeat()
 					PrintErrorLog(DBG_HERE,"Ö´ÐÐ SQLÓï¾ä[%s]´íÎóÐÅÏ¢=[%s]\n", szSql, GetSQLErrorMessage());
 					continue;
 				}
+				CommitTransaction();
 
 				{
 					//update database ne_deviceip
@@ -1690,7 +1691,6 @@ RESULT ProcRedisHeartBeat()
 					SaveDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, nDevicePort);
 				}
 			}
-			CommitTransaction();
 		}
 		
 		ClearRedisEleqrylog();
@@ -1700,7 +1700,7 @@ RESULT ProcRedisHeartBeat()
 	return NORMAL;
 }
 
-RESULT SaveDeviceIp(UINT nRepeaterId, INT nDeviceId, STR szClientIp, int nClientPort)
+RESULT SaveDeviceIp(UINT nRepeaterId, INT nDeviceId, PSTR szClientIp, int nClientPort)
 {
     char szSql[MAX_BUFFER_LEN];
 	CURSORSTRU struCursor;
@@ -1711,7 +1711,7 @@ RESULT SaveDeviceIp(UINT nRepeaterId, INT nDeviceId, STR szClientIp, int nClient
 		return EXCEPTION;
 		
     memset(szSql, 0, sizeof(szSql));
-    sprintf(szSql, "select qs_deviceip,qs_port from ne_deviceip where qs_RepeaterId = %u and qs_DeviceId = %d",
+    sprintf(szSql, "select qs_deviceip, qs_port from ne_deviceip where qs_RepeaterId = %u and qs_DeviceId = %d",
 	        nRepeaterId, nDeviceId);
 	PrintDebugLog(DBG_HERE, "Execute SQL[%s]\n", szSql);
 	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
@@ -1739,6 +1739,7 @@ RESULT SaveDeviceIp(UINT nRepeaterId, INT nDeviceId, STR szClientIp, int nClient
 		strcpy(szDeviceIp, GetTableFieldValue(&struCursor, "qs_deviceip"));
 		nDevicePort=atoi(GetTableFieldValue(&struCursor, "qs_port"));
 		FreeCursor(&struCursor);
+		PrintDebugLog(DBG_HERE, "update device info, [%s-%d, %s-%d]\n", szClientIp, nClientPort, szDeviceIp, nDevicePort);
 		
 		if (strcmp(szDeviceIp, szClientIp)!=0 || (nClientPort!=nDevicePort))
 		{
@@ -1753,7 +1754,6 @@ RESULT SaveDeviceIp(UINT nRepeaterId, INT nDeviceId, STR szClientIp, int nClient
 			}
 			CommitTransaction();
 		}
-		
 	}
 	return NORMAL; 
 }

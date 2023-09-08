@@ -4605,20 +4605,17 @@ RESULT GetDeviceIp(UINT nRepeaterId, int nDeviceId, PSTR pszDeviceIp, int *pPort
 	else
 	{
 		memset(szSql, 0, sizeof(szSql));
-		sprintf(szSql, "select qs_deviceip,qs_port from ne_deviceip where qs_RepeaterId = %u and qs_DeviceId = %d",
-		        nRepeaterId, nDeviceId);
+		sprintf(szSql, "select qs_deviceip,qs_port from ne_deviceip where qs_RepeaterId = %u and qs_DeviceId = %d", nRepeaterId, nDeviceId);
 		PrintDebugLog(DBG_HERE, "执行SQL语句[%s]\n", szSql);
 		if(SelectTableRecord(szSql, &struCursor) != NORMAL)
 		{
-			PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n", \
-						  szSql, GetSQLErrorMessage());
+			PrintErrorLog(DBG_HERE, "执行SQL语句[%s]错误, 信息为[%s]\n", szSql, GetSQLErrorMessage());
 			return EXCEPTION;
 		}
 		if(FetchCursor(&struCursor) != NORMAL)
 		{
 		    FreeCursor(&struCursor);
-			PrintErrorLog(DBG_HERE, "执行SQL语句[%s]没有找到记录\n", \
-						  szSql, GetSQLErrorMessage());
+			PrintErrorLog(DBG_HERE, "执行SQL语句[%s]没有找到记录\n", szSql, GetSQLErrorMessage());
 			return EXCEPTION;
 		}
 		strcpy(pszDeviceIp,  TrimAllSpace(GetTableFieldValue(&struCursor, "qs_deviceip")));

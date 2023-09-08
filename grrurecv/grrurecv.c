@@ -156,7 +156,8 @@ static RESULT StartPoolChildPro(PVOID pArgment)
 	        PrintErrorLog(DBG_HERE, "Connect Redis Error \n");
 	        return EXCEPTION;
 	    }
-	}else{
+	}
+	else{
 
 		if(OpenDatabase(szService, szDbName, szUser, szPwd) != NORMAL)
 		{
@@ -556,17 +557,17 @@ RESULT SaveDeviceIp(UINT nRepeaterId, INT nDeviceId)
 	 
 	if (strcmp(szClientIp, "0.0.0.0") == 0)
 		return EXCEPTION;
-		
+
     memset(szSql, 0, sizeof(szSql));
-    sprintf(szSql, "select qs_deviceip,qs_port from ne_deviceip where qs_RepeaterId = %u and qs_DeviceId = %d",
+    sprintf(szSql, "select qs_deviceip, qs_port from ne_deviceip where qs_RepeaterId = %u and qs_DeviceId = %d",
 	        nRepeaterId, nDeviceId);
 	PrintDebugLog(DBG_HERE, "Execute SQL[%s]\n", szSql);
 	if(SelectTableRecord(szSql, &struCursor) != NORMAL)
 	{
-		PrintErrorLog(DBG_HERE, "Execute SQL[%s]错误, 信息为[%s]\n", \
-					  szSql, GetSQLErrorMessage());
+		PrintErrorLog(DBG_HERE, "Execute SQL[%s]错误, 信息为[%s]\n", szSql, GetSQLErrorMessage());
 		return EXCEPTION;
 	}
+
 	if(FetchCursor(&struCursor) != NORMAL)
 	{
 	    FreeCursor(&struCursor);
@@ -1090,9 +1091,10 @@ RESULT ProcessGrruData(INT nSock, PSTR pszCaReqBuffer, INT nLen, struct sockaddr
         
 		if (nWuXian==1 || getenv("WUXIAN")!=NULL)
 			HmSetDeviceIp(nRepeaterId, nDeviceId);
-		//else
-		// 2023-9-5 fix by jingc - update ne_deviceip table
-		SaveDeviceIp(nRepeaterId, nDeviceId);
+		else{
+			// 2023-9-5 fix by jingc - update ne_deviceip table
+			SaveDeviceIp(nRepeaterId, nDeviceId);
+		}
     }
 
     bufclr(szReqBuffer);
