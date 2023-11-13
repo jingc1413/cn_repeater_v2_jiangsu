@@ -346,7 +346,7 @@ RESULT PublishToRedis(PXMLSTRU  pstruXml, int nReqFlag)
   	return NORMAL;
 }
 
-RESULT GetRedisPackageInfo(int nQryLogId, SENDPACKAGE *pstruSendInfo, PXMLSTRU  pstruXml)
+/*RESULT GetRedisPackageInfo(int nQryLogId, SENDPACKAGE *pstruSendInfo, PXMLSTRU  pstruXml)
 {
 	INT nMsgSerial;
 	char szMessage[8192];
@@ -443,7 +443,7 @@ RESULT GetRedisPackageInfo(int nQryLogId, SENDPACKAGE *pstruSendInfo, PXMLSTRU  
 	    freeReplyObject(reply);
 	}
 	return NORMAL;
-}
+}*/
 
 
 RESULT GetEleRespQueue(PSTR pszRespQueue)

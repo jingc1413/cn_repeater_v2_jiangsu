@@ -483,11 +483,11 @@ RESULT InsertEleQryLog(PXMLSTRU pstruXml)
 		    " insert into man_eleqrylog( qry_EleId, qry_Property,qry_Content, qry_Style,"
 		    " qry_Commtype, qry_TaskId, qry_User, qry_BeginTime, qry_Number,"
 		    " qry_endtime, qry_FailContent, qry_AlarmName, qry_IsSuccess, qry_IsAlarm,"
-		    " qry_TxPackCount, qry_RxPackCount, qry_TaskLogId,  qry_windowlogid, qry_packstatus,qry_type) values("
+		    " qry_TxPackCount, qry_RxPackCount, qry_TaskLogId,  qry_windowlogid, qry_packstatus) values("
 		    " %d,  '%s',   '%s', %d,"
 			" %d, %d, '%s', '%s', '%s', "
 			" '%s', '%s', '%s', %d, %d, "
-			" %d,  %d, %d, '%s', '%s', %d) ",
+			" %d,  %d, %d, '%s', '%s') ",
 			//DemandStrInXmlExt(pstruXml, "<omc>/<日志号>"),
 
 			atoi(DemandStrInXmlExt(pstruXml, "<omc>/<网元编号>")),
@@ -511,8 +511,7 @@ RESULT InsertEleQryLog(PXMLSTRU pstruXml)
 			0,													//qry_RxPackCount
     	    atoi(DemandStrInXmlExt(pstruXml, "<omc>/<任务日志号>")),
 			DemandStrInXmlExt(pstruXml,"<omc>/<窗体流水号>"),
-			"Timeout",										//qry_packstatus
-			nType
+			"Timeout"										//qry_packstatus
 		);
 
     PrintDebugLogR(DBG_HERE, "Execute SQL[%s]\n", szSql);

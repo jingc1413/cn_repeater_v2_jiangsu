@@ -422,12 +422,15 @@ static RESULT SetTaskStopUsing(int nTaskId, int nTskStyle)
 	
 	//校正接收条数
     memset(szSql, 0, sizeof(szSql));
-    snprintf(szSql, sizeof(szSql), "SELECT COUNT(*) AS nrxcount FROM man_eleqrylog WHERE qry_tasklogid=%d AND qry_IsSuccess=1", 
-         nTaskLogId);
+	if (nTskStyle==214){
+		snprintf(szSql, sizeof(szSql), "select count(*) as nrxcount from man_elesetlog where SET_TASKLOGID=%d and set_issuccess=1", nTaskLogId);
+	}else{
+		snprintf(szSql, sizeof(szSql), "SELECT COUNT(*) AS nrxcount FROM man_eleqrylog WHERE qry_tasklogid=%d AND qry_IsSuccess=1", nTaskLogId);
+	}
     PrintDebugLog(DBG_HERE,"Execute SQL[%s]\n",szSql);
 	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
 	{
-		PrintErrorLog(DBG_HERE,"Execute SQL[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+		PrintErrorLog(DBG_HERE,"Execute SQL[%s]failed[%s]\n",szSql,GetSQLErrorMessage());
 		return EXCEPTION;
 	}
 	if (FetchCursor(&struCursor) == NORMAL)
@@ -438,8 +441,13 @@ static RESULT SetTaskStopUsing(int nTaskId, int nTskStyle)
 	
 	//校正成功站点条数
     memset(szSql, 0, sizeof(szSql));
-    snprintf(szSql, sizeof(szSql), "SELECT COUNT(*) AS nelecount FROM (SELECT COUNT(qry_eleid) FROM man_eleqrylog WHERE qry_tasklogid=%d AND qry_IsSuccess=1 GROUP BY qry_eleid) b", 
-         nTaskLogId);
+		if (nTskStyle==214){
+			snprintf(szSql, sizeof(szSql), "select count(*) as nelecount from (select count(set_eleid) from man_elesetlog where set_tasklogid=%d "
+		"and set_issuccess=1 group by set_eleid) b", nTaskLogId);
+	}else{
+		snprintf(szSql, sizeof(szSql), "SELECT COUNT(*) AS nelecount FROM (SELECT COUNT(qry_eleid) FROM man_eleqrylog WHERE qry_tasklogid=%d "
+		"AND qry_IsSuccess=1 GROUP BY qry_eleid) b", nTaskLogId);
+	}
     PrintDebugLog(DBG_HERE,"Execute SQL[%s]\n",szSql);
 	if(SelectTableRecord(szSql,&struCursor) != NORMAL)
 	{
