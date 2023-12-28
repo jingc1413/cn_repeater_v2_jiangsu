@@ -864,7 +864,8 @@ RESULT Process2GSms(PSTR pszUndecode,PSTR pszTelephone,PSTR pszNetCenterNum, int
 		 }
 		 else if (nCommUpType == 0x06) //登录到监控中心上报
 		 {
-		   
+		    nNeId = GetNeId(nRepeaterId, nDeviceId, "", &bIsNewNeId);
+			struSendPackage.nNeId = nNeId;
 		    SaveToMaintainLog("登录到监控中心", "",  &struSendPackage);
 		 }
 		 else if (nCommUpType == 0x07) //心跳上报
@@ -1812,7 +1813,8 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 		}
 		else if (nCommUpType == 0x06) //登录到监控中心上报
 		{
-		    
+			nNeId = GetNeId(nRepeaterId, nDeviceId, "", &bIsNewNeId);
+			struSendPackage.nNeId = nNeId;
 		    SaveToMaintainLog("登录到监控中心", "",  &struSendPackage);
 		}
 		else if (nCommUpType == 0x07) //心跳上报

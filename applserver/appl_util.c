@@ -1938,7 +1938,7 @@ INT GetNeId(UINT nRepeaterId, int nDeviceId, PSTR pszNeTelNum, BOOL *pIsNewNeId)
 	    {
 	        FreeCursor(&struCursor);
 	    	memset(szSql, 0, sizeof(szSql));
-	        sprintf(szSql, "select ne_NeId from ne_Element where ne_RepeaterId = %u  and ne_DeviceId = %d",
+	        sprintf(szSql, "select ne_NeId from ne_Element where ne_RepeaterId = %u and ne_DeviceId = %d",
 	                nRepeaterId, nDeviceId);
 	        PrintDebugLog(DBG_HERE, "Ö´ÐÐSQLÓï¾ä[%s]\n", szSql);
 	        if(SelectTableRecord(szSql, &struCursor) != NORMAL)
