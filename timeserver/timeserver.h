@@ -50,7 +50,7 @@ typedef struct tagYIYANGSTRU
 	STR szAlarmCreateTime[19+1];  //   告警产生时间	格式为：年-月-日 小时:分:秒，年为4位数，小时为24小时制：格式YYYY-MM-DD HH:MM:SS
 	STR szNeType[100+1];           //         网元类型
 	STR szNeName[200+1];           //         网元名称
-	STR szNeVendor[10+1];         //       网元厂家
+	STR szNeVendor[32+1];         //       网元厂家
 	STR szAlarmLevel[10+1];       //     告警级别
 	STR szAlarmType[10+1] ;       //      告警类型：无线告警
 	STR szAlarmRedefLevel[10+1] ; //  重定义告警级别：空白

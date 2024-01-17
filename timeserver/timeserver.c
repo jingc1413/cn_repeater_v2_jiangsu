@@ -291,7 +291,7 @@ static RESULT InitYiYangInfo(VOID)
 	}
 
 	memset(pstruXml,0,sizeof(XMLSTRU));
-	if(ImportXmlFromFile(pstruXml,FALSE,pFile)!=NORMAL)
+	if(ImportXmlFromFile(pstruXml,FALSE, pFile)!=NORMAL)
 	{
 		PrintErrorLog(DBG_HERE,"从文件[%s]导入配置信息失败\n",szFile);
 		DeleteXml(pstruXml);
@@ -301,18 +301,18 @@ static RESULT InitYiYangInfo(VOID)
 
 	fclose(pFile);
 
-	if(DemandInXmlExt(pstruXml,"<亿阳>/<服务地址>",szYiYangIpAddr,sizeof(szYiYangIpAddr))!=NORMAL)
+	if(DemandInXmlExt(pstruXml,"<yiyang>/<server>",szYiYangIpAddr,sizeof(szYiYangIpAddr))!=NORMAL)
 	{
 
-		PrintErrorLog(DBG_HERE,"亿阳前转服务地址配置错误\n");
+		PrintErrorLog(DBG_HERE,"yiyang server config error\n");
 		DeleteXml(pstruXml);
 		return EXCEPTION;
 	}
 
-	if((DemandInXmlExt(pstruXml,"<亿阳>/<服务端口>",szTemp,sizeof(szTemp))!=NORMAL)
+	if((DemandInXmlExt(pstruXml,"<yiyang>/<port>",szTemp,sizeof(szTemp))!=NORMAL)
 	    || ((nYiYangPort=atoi(szTemp))<=0))
 	{
-		PrintErrorLog(DBG_HERE,"亿阳前转服务端口配置错误\n");
+		PrintErrorLog(DBG_HERE,"yiyang port config error\n");
 		DeleteXml(pstruXml);
 		return EXCEPTION;
 	}
@@ -693,7 +693,7 @@ RESULT TransferToYiYang(PSTR pszSendBuffer)
 	if((nConnectFd = CreateConnectSocket(szYiYangIpAddr, nYiYangPort, 60)) < 0)
 	{
 		PrintErrorLog(DBG_HERE, \
-			"同亿阳服务程序[%s][%d]建立连接错误,请联系管理员确信已经启动\n", szYiYangIpAddr, nYiYangPort);
+			"connect yiyang server [%s][%d]error\n", szYiYangIpAddr, nYiYangPort);
 		return EXCEPTION;
 	}
 	
@@ -702,11 +702,11 @@ RESULT TransferToYiYang(PSTR pszSendBuffer)
 	 */
 	if(SendSocketWithSync(nConnectFd, pszSendBuffer, strlen(pszSendBuffer), 60) < 0)
 	{
-		PrintErrorLog(DBG_HERE, "发送数据到亿阳服务程序错误\n");
+		PrintErrorLog(DBG_HERE, "send to yiyang error\n");
 		close(nConnectFd);
 		return EXCEPTION;
 	}
-	PrintTransLog(DBG_HERE,"发送到亿阳报文[%s]\n",pszSendBuffer);
+	PrintTransLog(DBG_HERE,"send yiyang data [%s]\n",pszSendBuffer);
 	//关闭连接
 	close(nConnectFd);
     return NORMAL;
@@ -1065,31 +1065,49 @@ RESULT ProcessAlarmTransfer()
 	/*
 	 *	建立连接
 	 */
+
 	if((nYiConnectFd = CreateConnectSocket(szYiYangIpAddr, nYiYangPort, 60)) < 0)
 	{
 		PrintErrorLog(DBG_HERE, \
-			"同亿阳服务程序[%s][%d]建立连接错误,请联系管理员确信已经启动\n", szYiYangIpAddr, nYiYangPort);
+			"connect to yiyang [%s][%d] error\n", szYiYangIpAddr, nYiYangPort);
 		CloseDatabase();
 		sleep(60);
 		return EXCEPTION;
-	} 
+	}
 	
-	
+	{
+		if(OpenDatabase(szServiceName,szDbName,szUser,szPwd)!=NORMAL)
+		{
+			PrintErrorLog(DBG_HERE, "open database error, [%s]\n", GetSQLErrorMessage());
+			sleep(10);
+			return EXCEPTION;
+		}
+	}
     while(TRUE)
 	{
+		PrintDebugLog(DBG_HERE,"begin trans alarm loop\n");
+		if (SQLPingInterval(60) <0)
+        {
+        	CloseDatabase();
+	    	sleep(1);
+	    	if(OpenDatabase(szServiceName, szDbName, szUser, szPwd) != NORMAL)
+		    {
+		        PrintErrorLog(DBG_HERE, "timeserv alarm transfer open database [%s]\n", GetSQLErrorMessage());
+		        return EXCEPTION;
+		    }
+        }
 	    /*
 	 	 *	处理告警交易
 	 	 */
-	    sprintf(szSql,"SELECT alg_AlarmLogId, alg_alarmId, alg_NeId, to_char(alg_AlarmTime,'yyyy-mm-dd hh24:mi:ss') as alg_AlarmTime,"
+		memset(szSql, sizeof(szSql), 0);
+		sprintf(szSql,"SELECT alg_AlarmLogId, alg_alarmId, alg_NeId, to_char(alg_AlarmTime,'yyyy-mm-dd hh24:mi:ss') as alg_AlarmTime,"
 	    						"alm_Alarm.alm_Name AS alg_AlarmName," 
-								"n.ne_RepeaterId ," 
+								"n.ne_RepeaterId," 
 								"n.ne_DeviceId,"
 								"n.ne_AlarmBegin, n.ne_AlarmEnd,"       
 								"n.ne_Name, n.ne_NeTelNum," 
 								"n.ne_sitelevelid, n.ne_systemnumbers," 
-								"n.ne_systemname, n.ne_protocoldevicetypeid,"
-								"n.ne_CellId, "
-								
+								"n.ne_systemname, n.ne_protocoldevicetypeid, n.ne_CellId, "
 								"p.are_Code AS alg_areaCode, ne_Company.co_Name AS alg_CompanyName," 
 								"ne_Company.co_CompanyId AS alg_CompanyId, "
 								"alm_Alarm.alm_LevelId AS alg_LevelId, "
@@ -1106,11 +1124,12 @@ RESULT ProcessAlarmTransfer()
 								"LEFT JOIN  alm_AlarmLevel ON alm_AlarmLevel.alv_AlarmLevelId = alm_Alarm.alm_LevelId "
 								"LEFT JOIN  ne_DeviceType ON ne_DeviceType.dtp_DeviceTypeId = n.ne_DeviceTypeId "
 								"LEFT JOIN  bs_gsmbasestation b ON n.ne_CellId = b.bs_CellId  and substr(b.bs_areaCode, 0, 4) = substr(p.are_Code, 0, 4) "
-                          "WHERE t.alg_AlarmStatusId = 0 ");
-	    //PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+                          "WHERE t.alg_AlarmStatusId = 0");
+						
+	    PrintDebugLog(DBG_HERE,"exec sql [%s] [%d]\n", szSql, NORMAL);
 	    if(SelectTableRecord(szSql,&struCursor) != NORMAL)
 	    {
-	    	PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
+	    	PrintErrorLog(DBG_HERE,"exec SQL[%s]error[%s]\n", szSql, GetSQLErrorMessage());
 	    	CloseDatabase();
 	    	close(nYiConnectFd);
 	    	sleep(60);
@@ -1118,7 +1137,7 @@ RESULT ProcessAlarmTransfer()
 	    }
 	    while (FetchCursor(&struCursor) == NORMAL)
 	    {
-	        PrintDebugLog(DBG_HERE,"开始处理告警前转================\n");
+	        PrintDebugLog(DBG_HERE,"begin deal trans alarm message================\n");
 	        memset(&struYiYangData, 0, sizeof(YIYANGSTRU));
 	        struYiYangData.IsNewAlarm = BOOLTRUE;
 			struYiYangData.NeId = atoi(GetTableFieldValue(&struCursor, "alg_NeId"));
@@ -1137,14 +1156,17 @@ RESULT ProcessAlarmTransfer()
 				 	PrintDebugLog(DBG_HERE,"外部告警替换后[%s][%s]\n",struYiYangData.szOriAlarmId, struYiYangData.szAlarmTitle);
 				}
 			}
-			
             strcpy(struYiYangData.szAlarmCreateTime,  GetTableFieldValue(&struCursor, "alg_AlarmTime"));
             strcpy(struYiYangData.szNeType,  GetTableFieldValue(&struCursor, "alg_DeviceTypeName"));
             
-            strcpy(szSiteId, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_CellId")));
-            //网元名称
-            sprintf(struYiYangData.szNeName, "%s", TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Name")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_CellId"))>0){
+				strcpy(szSiteId, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_CellId")));
+			}
             
+            //网元名称
+			if(strlen(GetTableFieldValue(&struCursor, "ne_Name"))>0){
+				sprintf(struYiYangData.szNeName, "%s", TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Name")));
+			}
             strcpy(struYiYangData.szNeVendor,  GetTableFieldValue(&struCursor, "alg_CompanyName")); //网元厂家
             strcpy(struYiYangData.szAlarmLevel,  GetTableFieldValue(&struCursor, "alg_LevelName")); //告警级别
             strcpy(struYiYangData.szAlarmType, "无线告警");  //告警类型：无线告警
@@ -1154,13 +1176,14 @@ RESULT ProcessAlarmTransfer()
             strcpy(struYiYangData.szAlarmTelnum,  GetTableFieldValue(&struCursor, "ne_NeTelNum")); 
             
             //告警地区地市 
-			strcpy(szArea, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Area")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_Area"))>0){
+				strcpy(szArea, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Area")));
+			}
 			if (strcmp(szArea, "") == 0)
 			    strcpy(szArea, "杭州");
 			if (strstr("杭州,宁波,温州,湖州,嘉兴,绍兴,金华,衢州,台州,丽水,舟山", szArea) != NULL)
 			    strcat(szArea, "市");
 		    strcpy(struYiYangData.szAlarmRegion, szArea);
-		    
 		    nSiteLevelId = atoi(GetTableFieldValue(&struCursor, "ne_sitelevelid"));
 		    if (nSiteLevelId == 1)
 		    	strcpy(struYiYangData.szSystemLevel, "普通");
@@ -1171,17 +1194,34 @@ RESULT ProcessAlarmTransfer()
 		    else if (nSiteLevelId == 4)
 		    	strcpy(struYiYangData.szSystemLevel, "高铁");
 		    
-		    strcpy(struYiYangData.szSystemNo, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_systemnumbers")));
-		    strcpy(struYiYangData.szSystemTitle, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_systemname")));
-		    
-		    strcpy(struYiYangData.szSiteId, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_SiteId")));
-		    strcpy(struYiYangData.szSiteName, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_sitename")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_systemnumbers"))>0){
+				strcpy(struYiYangData.szSystemNo, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_systemnumbers")));
+			}
+		    if(strlen(GetTableFieldValue(&struCursor, "ne_systemname"))>0){
+				strcpy(struYiYangData.szSystemTitle, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_systemname")));
+			}
+			char *sitId = GetTableFieldValue(&struCursor, "bs_SiteId");
+			if (strlen(sitId)>0){
+				strcpy(struYiYangData.szSiteId, TrimAllSpace(sitId));
+			}
+			char *sitName = GetTableFieldValue(&struCursor, "bs_sitename");
+			if (strlen(sitName)>0){
+				strcpy(struYiYangData.szSiteName, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_sitename")));
+			}
 		    //2011.11.21 add
-		    strcpy(struYiYangData.szCellId, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_CellId")));
-		    strcpy(struYiYangData.szLac, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_Lac")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_CellId"))>0){
+				strcpy(struYiYangData.szCellId, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_CellId")));
+			}
+			if(strlen(GetTableFieldValue(&struCursor, "bs_Lac"))>0){
+				strcpy(struYiYangData.szLac, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_Lac")));
+			}
 		    //判断是否有告警时段
-            strcpy(szAlarmBegin, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmBegin")));
-            strcpy(szAlarmEnd, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmEnd")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_AlarmBegin"))>0){
+				strcpy(szAlarmBegin, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmBegin")));
+			}
+			if(strlen(GetTableFieldValue(&struCursor, "ne_AlarmEnd"))>0){
+				strcpy(szAlarmEnd, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmEnd")));
+			}
             if (strlen(szAlarmBegin) == 5 && strlen(szAlarmEnd) == 5) 
             {
  				time_t struTimeNow;
@@ -1214,14 +1254,13 @@ RESULT ProcessAlarmTransfer()
                 "systemNo:%s\nsystemTitle:%s\nsiteId:%s\nsiteName:%s\n"
                 "cellId:%s\nlac:%s\nextendInfo:%s\nalarmStatus:0\n%s\n",
                 
-                "<ALARMSTART>", "湖州铁塔室分维护平台", "三维通信", struYiYangData.szAlarmId, struYiYangData.szOriAlarmId,
+                "<ALARMSTART>", "广西电信直放站网络管理平台", "三维通信", struYiYangData.szAlarmId, struYiYangData.szOriAlarmId,
                 struYiYangData.szAlarmTitle, struYiYangData.szAlarmCreateTime, struYiYangData.szNeType, struYiYangData.szNeName, struYiYangData.szNeVendor,
                 struYiYangData.szAlarmLevel, struYiYangData.szAlarmType, struYiYangData.szAlarmRedefLevel, struYiYangData.szAlarmRedefType, struYiYangData.szAlarmLocation,
                 struYiYangData.szAlarmDeviceId, struYiYangData.szAlarmTelnum, struYiYangData.szAlarmRegion, struYiYangData.szSystemLevel,
                 struYiYangData.szSystemNo, struYiYangData.szSystemTitle, struYiYangData.szSiteId, struYiYangData.szSiteName, 
                 struYiYangData.szCellId, struYiYangData.szLac, struYiYangData.szExtendInfo,  "<ALARMEND>");
-            PrintTransLog(DBG_HERE,"发送告警前转报文[%s]\n",szSendBuffer);  
-            
+			PrintTransLog(DBG_HERE,"发送告警前转报文[%s]\n",szSendBuffer);  
             /*
 			 *	发送数据到消息服务监听口
 			 */
@@ -1247,7 +1286,6 @@ RESULT ProcessAlarmTransfer()
 	    
 	    
 	    //查找派单时间之外告警
-	    
 	    sprintf(szSql,"SELECT alg_AlarmLogId, alg_alarmId, alg_NeId, to_char(alg_AlarmTime,'yyyy-mm-dd hh24:mi:ss') as alg_AlarmTime,"
 	    						"alm_Alarm.alm_Name AS alg_AlarmName," 
 								"n.ne_RepeaterId ," 
@@ -1275,7 +1313,7 @@ RESULT ProcessAlarmTransfer()
 								"LEFT JOIN  ne_DeviceType ON ne_DeviceType.dtp_DeviceTypeId = n.ne_DeviceTypeId "
 								"LEFT JOIN  bs_gsmbasestation b ON n.ne_CellId = b.bs_CellId  and substr(b.bs_areaCode, 0, 4) = substr(p.are_Code, 0, 4) "
                           "WHERE t.alg_AlarmStatusId = 1 ");
-	    //PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+	    PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 	    if(SelectTableRecord(szSql,&struCursor) != NORMAL)
 	    {
 	    	PrintErrorLog(DBG_HERE,"执行SQL语句[%s]失败[%s]\n",szSql,GetSQLErrorMessage());
@@ -1286,7 +1324,7 @@ RESULT ProcessAlarmTransfer()
 	    }
 	    while (FetchCursor(&struCursor) == NORMAL)
 	    {
-	        PrintDebugLog(DBG_HERE,"开始处理告警前转================\n");
+	        PrintDebugLog(DBG_HERE,"begin deal transfer alarm==========\n");
 	        memset(&struYiYangData, 0, sizeof(YIYANGSTRU));
 	        struYiYangData.IsNewAlarm = BOOLTRUE;
 			struYiYangData.NeId = atoi(GetTableFieldValue(&struCursor, "alg_NeId"));
@@ -1298,10 +1336,13 @@ RESULT ProcessAlarmTransfer()
             strcpy(struYiYangData.szAlarmCreateTime,  GetTableFieldValue(&struCursor, "alg_AlarmTime"));
             strcpy(struYiYangData.szNeType,  GetTableFieldValue(&struCursor, "alg_DeviceTypeName"));
             
-            strcpy(szSiteId, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_CellId")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_CellId"))>0){
+				strcpy(szSiteId, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_CellId")));
+			}
             //网元名称
-            sprintf(struYiYangData.szNeName, "%s", TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Name")));
-            
+			if(strlen(GetTableFieldValue(&struCursor, "ne_Name"))>0){
+				sprintf(struYiYangData.szNeName, "%s", TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Name")));
+			}
             strcpy(struYiYangData.szNeVendor,  GetTableFieldValue(&struCursor, "alg_CompanyName")); //网元厂家
             strcpy(struYiYangData.szAlarmLevel,  GetTableFieldValue(&struCursor, "alg_LevelName")); //告警级别
             strcpy(struYiYangData.szAlarmType, "无线告警");  //告警类型：无线告警
@@ -1311,7 +1352,9 @@ RESULT ProcessAlarmTransfer()
             strcpy(struYiYangData.szAlarmTelnum,  GetTableFieldValue(&struCursor, "ne_NeTelNum")); 
             
             //告警地区地市 
-			strcpy(szArea, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Area")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_Area"))>0){
+				strcpy(szArea, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Area")));
+			}
 			if (strcmp(szArea, "") == 0)
 			    strcpy(szArea, "杭州");
 			if (strstr("杭州,宁波,温州,湖州,嘉兴,绍兴,金华,衢州,台州,丽水,舟山", szArea) != NULL)
@@ -1328,20 +1371,35 @@ RESULT ProcessAlarmTransfer()
 		    else if (nSiteLevelId == 4)
 		    	strcpy(struYiYangData.szSystemLevel, "高铁");
 		    
-		    strcpy(struYiYangData.szSystemNo, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_systemnumbers")));
-		    strcpy(struYiYangData.szSystemTitle, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_systemname")));
-		    
-		    strcpy(struYiYangData.szSiteId, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_SiteId")));
-		    strcpy(struYiYangData.szSiteName, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_sitename")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_systemnumbers"))>0){
+				strcpy(struYiYangData.szSystemNo, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_systemnumbers")));
+			}
+			if (strlen(GetTableFieldValue(&struCursor, "ne_systemname"))>0){
+				strcpy(struYiYangData.szSystemTitle, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_systemname")));
+			}
+			if(strlen(GetTableFieldValue(&struCursor, "bs_SiteId"))>0){
+				strcpy(struYiYangData.szSiteId, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_SiteId")));
+			}
+		    if(strlen(GetTableFieldValue(&struCursor, "bs_sitename"))>0){
+				strcpy(struYiYangData.szSiteName, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_sitename")));
+			}
 		    
 		     //2011.11.21 add
-		    strcpy(struYiYangData.szCellId, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_CellId")));
-		    strcpy(struYiYangData.szLac, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_Lac")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_CellId"))>0){
+				strcpy(struYiYangData.szCellId, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_CellId")));
+			}
+			if(strlen(GetTableFieldValue(&struCursor, "bs_Lac"))>0){
+				strcpy(struYiYangData.szLac, TrimAllSpace(GetTableFieldValue(&struCursor, "bs_Lac")));	
+			}
+		    
 		    
 		    //判断是否有告警时段
-            strcpy(szAlarmBegin, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmBegin")));
-            strcpy(szAlarmEnd, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmEnd")));
-            
+			if(strlen(GetTableFieldValue(&struCursor, "ne_AlarmBegin"))>0){
+				strcpy(szAlarmBegin, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmBegin")));	
+			}
+            if(strlen(GetTableFieldValue(&struCursor, "ne_AlarmEnd"))>0){
+				strcpy(szAlarmEnd, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_AlarmEnd")));	
+			}
             if (strlen(szAlarmBegin) == 5 && strlen(szAlarmEnd) == 5)
             {
  				time_t struTimeNow;
@@ -1380,7 +1438,7 @@ RESULT ProcessAlarmTransfer()
                 "systemNo:%s\nsystemTitle:%s\nsiteId:%s\nsiteName:%s\n"
                 "cellId:%s\nlac:%s\nextendInfo:%s\nalarmStatus:0\n%s\n",
                 
-                "<ALARMSTART>", "湖州铁塔室分维护平台", "三维通信", struYiYangData.szAlarmId, struYiYangData.szOriAlarmId,
+                "<ALARMSTART>", "广西电信直放站网络管理平台", "三维通信", struYiYangData.szAlarmId, struYiYangData.szOriAlarmId,
                 struYiYangData.szAlarmTitle, struYiYangData.szAlarmCreateTime, struYiYangData.szNeType, struYiYangData.szNeName, struYiYangData.szNeVendor,
                 struYiYangData.szAlarmLevel, struYiYangData.szAlarmType, struYiYangData.szAlarmRedefLevel, struYiYangData.szAlarmRedefType, struYiYangData.szAlarmLocation,
                 struYiYangData.szAlarmDeviceId, struYiYangData.szAlarmTelnum, struYiYangData.szAlarmRegion, struYiYangData.szSystemLevel,
@@ -1417,7 +1475,7 @@ RESULT ProcessAlarmTransfer()
 							"JOIN ne_Element ON ne_Element.ne_NeId = tf_alarmlog_trigger.alg_NeId  "
 							"left join  pre_Area p on ne_Element.ne_AreaId = p.are_AreaId "
 							"where tf_alarmlog_trigger.alg_AlarmStatusId>=4");
-	    //PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
+	    PrintDebugLog(DBG_HERE,"执行SQL语句[%s]\n",szSql);
 	    if(SelectTableRecord(szSql,&struCursor) != NORMAL)
 	    {
 	    	CloseDatabase();
@@ -1440,8 +1498,9 @@ RESULT ProcessAlarmTransfer()
 			else
 			    strcpy(struYiYangData.szAlarmStatus, "2");
 			strcpy(struYiYangData.szStatusTime,  GetTableFieldValue(&struCursor, "alg_ClearTime"));
-			
-			strcpy(szArea, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Area")));
+			if(strlen(GetTableFieldValue(&struCursor, "ne_Area"))>0){
+				strcpy(szArea, TrimAllSpace(GetTableFieldValue(&struCursor, "ne_Area")));
+			}
 			if (strcmp(szArea, "") == 0)
 			    strcpy(szArea, "杭州");
 			if (strstr("杭州,宁波,温州,湖州,嘉兴,绍兴,金华,衢州,台州,丽水,舟山", szArea) != NULL)
@@ -1450,7 +1509,7 @@ RESULT ProcessAlarmTransfer()
 		    
 		    bufclr(szSendBuffer);
 		    snprintf(szSendBuffer, sizeof(szSendBuffer), "\n%s\nsystemName:%s\nsystemVendor:%s\nalarmId:%s\nalarmStatus:%s\nstatusTime:%s\n%s\n",
-		        "<ALARMSTART>", "湖州铁塔室分维护平台", "三维通信", struYiYangData.szAlarmId, struYiYangData.szAlarmStatus, struYiYangData.szStatusTime, "<ALARMEND>");
+		        "<ALARMSTART>", "广西电信直放站网络管理平台", "三维通信", struYiYangData.szAlarmId, struYiYangData.szAlarmStatus, struYiYangData.szStatusTime, "<ALARMEND>");
 		    PrintTransLog(DBG_HERE,"发送告警清除报文[%s]\n",szSendBuffer);
 		    
 		    /*
@@ -1653,11 +1712,12 @@ RESULT ProcRedisHeartBeat()
 		if (nTimes>0)
 		{
 			TrimRightOneChar(szRepeaterIds, ',');
-
+			//PrintDebugLog(DBG_HERE, "repeater id list, %s\n", szRepeaterIds);
 			int nCount = 0;
 			int i = 0;
 			PSTR pszSeperateStr[100];
 			nCount= SeperateString(szRepeaterIds, ',', pszSeperateStr, 100);
+			char repeaterids[1000] = {0};
 			for(i=0; i< nCount; i++){
 				if (pszSeperateStr[i] == NULL || strlen(pszSeperateStr[i]) < 3){
 					continue;
@@ -1672,15 +1732,12 @@ RESULT ProcRedisHeartBeat()
 				int nDeviceId = 0;
 				nRepeaterId = atol(pszRD[0]);
 				nDeviceId = atoi(pszRD[1]);
-				snprintf(szSql, sizeof (szSql), "update man_linklog set mnt_lastupdatetime=NOW() where mnt_repeaterid=%u and mnt_deviceid=%d", nRepeaterId, nDeviceId);	
-				PrintDebugLog(DBG_HERE,"Execute SQL[%s]\n", szSql);
-				if(ExecuteSQL(szSql)!=NORMAL)
-				{
-					PrintErrorLog(DBG_HERE,"执行 SQL语句[%s]错误信息=[%s]\n", szSql, GetSQLErrorMessage());
+				if (nRepeaterId == 0){
+					PrintDebugLog(DBG_HERE, "repeater id error, %s, %d, %s\n", pszSeperateStr[i], i, szRepeaterIds);
 					continue;
 				}
-				CommitTransaction();
-
+				int len = strlen(repeaterids);
+				snprintf(repeaterids + len, sizeof(repeaterids)-len, "%u,", nRepeaterId);
 				{
 					//update database ne_deviceip
 					char szDeviceIp[30];
@@ -1699,7 +1756,20 @@ RESULT ProcRedisHeartBeat()
 					SaveDeviceIp(nRepeaterId, nDeviceId, szDeviceIp, nDevicePort);
 				}
 			}
-		}
+			{
+				char *p = strrchr(repeaterids, ',');
+				if (p != NULL)
+					*p = '\0';
+				}
+				snprintf(szSql, sizeof(szSql), "update man_linklog set mnt_lastupdatetime=NOW() where mnt_repeaterid in (%s)", repeaterids);
+				PrintDebugLog(DBG_HERE, "Execute SQL[%s]\n", szSql);
+				if(ExecuteSQL(szSql) != NORMAL)
+				{
+					PrintErrorLog(DBG_HERE,"执行 SQL语句[%s]错误信息=[%s]\n", szSql, GetSQLErrorMessage());
+					continue;
+				}
+				CommitTransaction();
+			}
 		
 		ClearRedisEleqrylog();
 	}
@@ -1747,7 +1817,7 @@ RESULT SaveDeviceIp(UINT nRepeaterId, INT nDeviceId, PSTR szClientIp, int nClien
 		strcpy(szDeviceIp, GetTableFieldValue(&struCursor, "qs_deviceip"));
 		nDevicePort=atoi(GetTableFieldValue(&struCursor, "qs_port"));
 		FreeCursor(&struCursor);
-		PrintDebugLog(DBG_HERE, "update device info, [%s-%d, %s-%d]\n", szClientIp, nClientPort, szDeviceIp, nDevicePort);
+		//PrintDebugLog(DBG_HERE, "update device info, [%s-%d, %s-%d]\n", szClientIp, nClientPort, szDeviceIp, nDevicePort);
 		
 		if (strcmp(szDeviceIp, szClientIp)!=0 || (nClientPort!=nDevicePort))
 		{
@@ -1877,15 +1947,26 @@ RESULT TimeServChildProcessWork(int nPid)
     {
     	ProcRedisHeartBeat();
        /*
+	   // modify by jingc 202401111600
        GetCfgItem("timeserv.cfg", szCfgSeg, "ISTRANSFER",szTemp);
        if (atoi(szTemp) == 1)
        	   SendSmsMessage();//转发短信
        else
-       	   ProcessAlarmTransfer();//亿阳接口
-       */
+    	   ProcessAlarmTransfer();//亿阳接口
+		   */
+       
 	}
-	else if (nPid == 3)
-	   ProcessMsgQueue();
+	else if (nPid == 3){
+		// modify by jingc 202401111600
+       GetCfgItem("timeserv.cfg", szCfgSeg, "ISTRANSFER",szTemp);
+       if (atoi(szTemp) == 1)
+       	   SendSmsMessage();//转发短信
+       else
+    	   ProcessAlarmTransfer();//亿阳接口
+	}
+	else if (nPid == 4){
+		ProcessMsgQueue();	
+	}
 	   
 	
     return NORMAL;
@@ -1979,7 +2060,7 @@ RESULT main(INT argc,PSTR argv[])
 	}
 	
 	//初始化亿阳服务器信息
-	//InitYiYangInfo();
+	InitYiYangInfo();
 
 	if(GetDatabaseArg(szServiceName,szDbName,szUser,szPwd)!=NORMAL)
 	{
