@@ -1433,7 +1433,6 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 		return EXCEPTION; 
     }
 
-	
     PrintDebugLog(DBG_HERE, "解析GPRS协议成功,协议类型[%02d],命令标识[%d],错误代码[%d],站点编号[%u],设备编号[%d],网络标识[%d],对象数[%d]\n",
         Decodeout.NPLayer.APID,  Decodeout.MAPLayer.CommandFalg, Decodeout.APLayer.ErrorCode, 
         Decodeout.NPLayer.structRepeater.RepeaterId, Decodeout.NPLayer.structRepeater.DeviceId,

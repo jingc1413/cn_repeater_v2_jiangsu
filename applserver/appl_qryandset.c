@@ -3836,6 +3836,7 @@ RESULT UpdateEleQryLogFromComm(SENDPACKAGE *pstruSendPackage, PSTR pszProperty, 
 	bufclr(szCallNum);
 	bufclr(szBeCallNum);
 	n_neid = pstruSendPackage->nNeId;
+
 	n_protocoltypeid = pstruSendPackage->struHead.nProtocolType;
 	n_protocoldevicetypeid = pstruSendPackage->struRepeater.nProtocolDeviceType;
 	strcpy(szTelNum, pstruSendPackage->struRepeater.szTelephoneNum);
@@ -3855,8 +3856,8 @@ RESULT UpdateEleQryLogFromComm(SENDPACKAGE *pstruSendPackage, PSTR pszProperty, 
 	{
 	    if (strcmp(pszPropertyStr[i], "0002") == 0 || strcmp(pszPropertyStr[i], "00000002") == 0) //公司
 	    {
-	        if (n_protocoltypeid == 1)
-	            sprintf(szElementSql, "%s ne_CompanyId= %s,", szElementSql, pszContentStr[i]);
+	        //if (n_protocoltypeid == 1)
+	        sprintf(szElementSql, "%s ne_CompanyId= %s,", szElementSql, pszContentStr[i]);
 	    }
 	    else if (strcmp(pszPropertyStr[i], "0003") == 0 || strcmp(pszPropertyStr[i], "00000003") == 0) //设备类别
 	    {

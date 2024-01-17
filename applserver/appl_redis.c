@@ -198,11 +198,17 @@ RESULT RedisHsetAndPush(PXMLSTRU  pstruXml)
 	}
 	freeReplyObject(reply);
 	
-
-	reply = redisCommand(redisconn,"LPUSH Queue%u %s", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")), pMessageBoby);
-	
-	PrintDebugLog(DBG_HERE, "LPUSH %u_%d %s\n", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")),
+    int commProtocolType = atoi(DemandStrInXmlExt(pstruXml, "<omc>/<通信方式>"));
+	PrintDebugLog(DBG_HERE, "protocol type: %d\n", commProtocolType);
+	if (commProtocolType==6){
+		reply = redisCommand(redisconn,"LPUSH Queue%u %s", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")), pMessageBoby);
+	}else{
+		reply = redisCommand(redisconn,"LPUSH qryset_queue %s", pMessageBoby);	
+		PrintDebugLog(DBG_HERE, "lpush qryset_queue %d %s\n", atoi(DemandStrInXmlExt(pstruXml, "<omc>/<设备编号>")),  pMessageBoby);
+		PrintDebugLog(DBG_HERE, "LPUSH %u_%d %s\n", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")),
 			atoi(DemandStrInXmlExt(pstruXml, "<omc>/<设备编号>")),  pMessageBoby);
+	}
+	
     freeReplyObject(reply);
      
 	reply = redisCommand(redisconn,"EXPIRE Queue%u 43200", atol(DemandStrInXmlExt(pstruXml, "<omc>/<站点编号>")));
