@@ -1,3 +1,3 @@
 # cn_repeater_v2_jiangsu
 das_jiangsu
-国内第三代覆盖网管_V2_COMMSERV	
+鍥藉唴绗笁浠ｈ鐩栫綉绠V2_COMMSERV	
