@@ -1815,6 +1815,7 @@ RESULT Process2GGprs(int nQryLogId, PSTR pszUndecode, INT nLen)
 			nNeId = GetNeId(nRepeaterId, nDeviceId, "", &bIsNewNeId);
 			struSendPackage.nNeId = nNeId;
 		    SaveToMaintainLog("登录到监控中心", "",  &struSendPackage);
+			DecodeQueryMapList((SENDPACKAGE *)&struSendPackage);
 		}
 		else if (nCommUpType == 0x07) //心跳上报
 		{
